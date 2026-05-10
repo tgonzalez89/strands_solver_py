@@ -70,24 +70,32 @@ uv run pre-commit run --all-files
 
 ### Running the CLI Application
 
-The solver takes a board grid, a dictionary of allowed words, and a list of valid moves to verify.
+The solver supports two modes:
 
-**Required options:**
-- `-w, --words FILE` — Path to allowed words file (one word per line)
+- **Discovery mode** (no moves file): prints all possible words found on the board
+- **Verification mode** (with moves file): applies expected moves and prints `matched=X/Y`
+
+**Options:**
+- `-w, --allowed-words FILE` — Path to allowed words file (one word per line)
 - `-b, --board FILE` — Path to board grid file
-- `-m, --moves FILE` — Path to valid moves file (Python literal format)
+- `-m, --valid-moves FILE` — Optional path to valid moves file (Python literal format)
 
-**Basic usage:**
+**Discovery mode usage:**
+```bash
+uv run strands_solver -w <words_file> -b <board_file>
+```
+
+**Verification mode usage:**
 ```bash
 uv run strands_solver -w <words_file> -b <board_file> -m <moves_file>
 ```
 
-**Example with provided data:**
+**Verification mode example with provided data:**
 ```bash
 uv run strands_solver \
-  -w data/allowed_words.txt \
-  -b data/example1/board.txt \
-  -m data/example1/valid_moves.txt
+   -w data/allowed_words.txt \
+   -b data/example1/board.txt \
+   -m data/example1/valid_moves.txt
 ```
 
 **Example output:**

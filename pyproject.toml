@@ -1,0 +1,149 @@
+[build-system]
+requires = ["hatchling"]
+build-backend = "hatchling.build"
+
+# ---------------------------------------------------------------------------
+# Project metadata
+# ---------------------------------------------------------------------------
+[project]
+name = "strands_solver"
+version = "0.1.0"
+description = "."
+readme = "README.md"
+license = { file = "LICENSE" }
+authors = [
+  { name = "Tomas Gonzalez Aragon", email = "tomas.gonz.arg@gmail.com" },
+]
+keywords = ["strands_solver"]
+requires-python = ">=3.12"
+# Runtime dependencies for end users of the library/CLI.
+# Keep this stub even when empty so adding first-party requirements is obvious.
+dependencies = []
+
+[project.urls]
+Homepage = "https://github.com/tgonzalez89/strands_solver"
+Repository = "https://github.com/tgonzalez89/strands_solver"
+Issues = "https://github.com/tgonzalez89/strands_solver/issues"
+
+[project.scripts]
+strands_solver = "strands_solver.__main__:main"
+
+# ---------------------------------------------------------------------------
+# Hatch build config (src layout)
+# ---------------------------------------------------------------------------
+[tool.hatch.build.targets.wheel]
+packages = ["src/strands_solver"]
+
+# ---------------------------------------------------------------------------
+# Dependency groups (PEP 735) - preferred modern workflow for local/dev tooling.
+# These are not published as installable extras for downstream users.
+# ---------------------------------------------------------------------------
+[dependency-groups]
+dev = [
+  "pre-commit>=4.2",
+  "pytest>=8.3",
+  "pytest-cov>=6.1",
+  "ruff>=0.11",
+  "ty>=0.0.1a8",
+]
+
+# ---------------------------------------------------------------------------
+# Ruff - linting + formatting (replaces black, isort, flake8, pylint)
+# ---------------------------------------------------------------------------
+[tool.ruff]
+target-version = "py314"
+line-length = 120
+src = ["src"]
+
+[tool.ruff.lint]
+select = [
+  "E",    # pycodestyle errors
+  "W",    # pycodestyle warnings
+  "F",    # pyflakes
+  "I",    # isort
+  "N",    # pep8-naming
+  "UP",   # pyupgrade
+  "B",    # flake8-bugbear
+  "C4",   # flake8-comprehensions
+  "SIM",  # flake8-simplify
+  "TCH",  # flake8-type-checking (move type-only imports into TYPE_CHECKING)
+  "ANN",  # flake8-annotations (enforce type hints)
+  "PT",   # flake8-pytest-style
+  "RUF",  # Ruff-specific rules
+  "ERA",  # eradicate (detect commented-out code)
+  "PL",   # Pylint
+  "TRY",  # tryceratops
+  "PERF", # perflint
+]
+ignore = [
+  "TRY003", # avoid specifying long messages outside exception class
+]
+fixable = ["ALL"]
+unfixable = []
+
+[tool.ruff.lint.per-file-ignores]
+"tests/**/*.py" = [
+  "ANN",     # tests don't need full annotation coverage
+  "PLR2004", # magic values ok in tests
+  "TC",      # type-checking import moves less important in tests
+]
+"src/strands_solver/**/*.py" = [
+  "N999", # module name uses placeholder (will be replaced via sed)
+]
+
+[tool.ruff.lint.isort]
+known-first-party = ["strands_solver"]
+
+[tool.ruff.format]
+quote-style = "double"
+indent-style = "space"
+skip-magic-trailing-comma = false
+line-ending = "auto"
+
+# ---------------------------------------------------------------------------
+# ty - type checker (Astral)
+# ---------------------------------------------------------------------------
+[tool.ty.environment]
+root = ["src"]
+
+[tool.ty.rules]
+# Enable strictest available rules
+unknown-argument = "error"
+invalid-return-type = "error"
+missing-argument = "error"
+too-many-positional-arguments = "error"
+unresolved-import = "error"
+
+# ---------------------------------------------------------------------------
+# pytest
+# ---------------------------------------------------------------------------
+[tool.pytest.ini_options]
+testpaths = ["tests"]
+addopts = [
+  "--strict-markers",
+  "--strict-config",
+  "-ra",
+  "--cov=strands_solver",
+  "--cov-report=term-missing",
+  "--cov-report=html:htmlcov",
+  "--cov-fail-under=80",
+]
+xfail_strict = true
+
+# ---------------------------------------------------------------------------
+# Coverage
+# ---------------------------------------------------------------------------
+[tool.coverage.run]
+source = ["src/strands_solver"]
+branch = true
+omit = ["*/cli.py"]             # CLI tested via integration; adjust as needed
+
+[tool.coverage.report]
+show_missing = true
+skip_covered = false
+exclude_lines = [
+  "pragma: no cover",
+  "if TYPE_CHECKING:",
+  "if __name__ == .__main__.:",
+  "@(abc\\.)?abstractmethod",
+]

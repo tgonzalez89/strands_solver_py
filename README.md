@@ -70,25 +70,122 @@ uv run pre-commit run --all-files
 
 ### Running the CLI Application
 
-The solver supports two modes:
+The CLI now selects mode with `--driver`:
+
+- **File mode** (`--driver file`): reads board/moves from files
+- **Appium mode** (`--driver appium`): runs real device flow
+- **Fake mode** (`--driver fake`): runs OCR against generated screenshots
+
+For file mode, there are two sub-modes:
 
 - **Discovery mode** (no moves file): prints all possible words found on the board
 - **Verification mode** (with moves file): applies expected moves and prints `matched=X/Y`
 
 **Options:**
-- `-w, --allowed-words FILE` — Path to allowed words file (one word per line)
-- `-b, --board FILE` — Path to board grid file
-- `-m, --valid-moves FILE` — Optional path to valid moves file (Python literal format)
+- `-w, --allowed-words FILE` - Path to allowed words file (one word per line)
+- `--driver {file,appium,fake}` - Backend mode
+- `-b, --board FILE` - Board file (required for `file` and `fake` driver)
+- `-m, --valid-moves FILE` - Optional valid moves file (file mode only)
+- `--spangram-index N` - 0-based spangram move index (repeatable, fake mode)
+- `--fake-mode {light,dark}` - Render mode for fake screenshots (fake mode)
 
-**Discovery mode usage:**
+**File mode discovery:**
 ```bash
-uv run strands_solver -w <words_file> -b <board_file>
+uv run strands_solver --driver file -w <words_file> -b <board_file>
 ```
 
-**Verification mode usage:**
+**File mode verification:**
 ```bash
-uv run strands_solver -w <words_file> -b <board_file> -m <moves_file>
+uv run strands_solver --driver file -w <words_file> -b <board_file> -m <moves_file>
 ```
+
+**Appium mode:**
+```bash
+uv run strands_solver --driver appium -w <words_file>
+```
+
+**Fake OCR-test mode:**
+```bash
+uv run strands_solver \
+   --driver fake \
+   -w <words_file> \
+   -b <board_file> \
+   -m <moves_file> \
+   --spangram-index 0 \
+   --fake-mode light
+```
+
+### Tesseract data path (TESSDATA_PREFIX)
+
+OCR-backed flows (`--driver fake` and `--driver appium`) require Tesseract language data.
+If you see errors like `Failed to init API` or invalid tessdata path, set `TESSDATA_PREFIX` to the folder that contains `eng.traineddata`.
+
+Common Linux paths:
+- `/usr/share/tesseract-ocr/5/tessdata`
+- `/usr/share/tessdata`
+- `/usr/local/share/tessdata`
+
+Check quickly:
+```bash
+ls "$TESSDATA_PREFIX"/eng.traineddata
+```
+
+Run fake mode with explicit tessdata path:
+```bash
+TESSDATA_PREFIX=/usr/share/tesseract-ocr/5/tessdata \
+uv run strands_solver \
+   --driver fake \
+   -w data/allowed_words.txt \
+   -b data/example1/board.txt \
+   -m data/example1/valid_moves.txt \
+   --spangram-index 2 \
+   --fake-mode light
+```
+
+Note: appium mode requires a configured Appium session; otherwise the CLI reports `device_mode_not_ready`.
+
+### Generating Board State Images
+
+Use `strands_board_image` to render a Strands-like board image from a board file and optional moves file.
+
+**Required arguments:**
+- `--board`: board file path (for example `data/example1/board.txt`)
+- `--output` / `-o`: output image path
+
+**Optional arguments:**
+- `--valid-moves`: moves file path (for example `data/example1/valid_moves.txt`)
+- `--mode`: `dark` (default) or `light`
+- `--spangram-index`: 0-based index of a move to draw as spangram (repeatable)
+
+If a coordinate is not covered by `--valid-moves`, it is rendered with board background color.
+In dark mode, unselected letters are rendered in white.
+
+Install image dependencies if needed:
+```bash
+uv sync --group device
+```
+
+Generate a dark-mode image:
+```bash
+uv run strands_board_image \
+   --board data/example1/board.txt \
+   --valid-moves data/example1/valid_moves.txt \
+   --spangram-index 0 \
+   --mode dark \
+   --output data/example1_board_dark.png
+```
+
+Generate a light-mode image:
+```bash
+uv run strands_board_image \
+   --board data/example1/board.txt \
+   --valid-moves data/example1/valid_moves.txt \
+   --spangram-index 0 \
+   --mode light \
+   --output data/example1_board_light.png
+```
+
+Useful render tuning options include `--width`, `--height`, `--board-width-ratio`, `--board-height-ratio`, `--board-center-y-ratio`, `--cell-radius-ratio`, and `--font-size-ratio`.
 
 **Verification mode example with provided data:**
 ```bash
@@ -143,3 +240,30 @@ board
 - The solver validates that matched paths don't leave isolated board regions smaller than 4 cells
 - Type hints are enforced with `ty` (Python's strict type checker)
 - Code is formatted and linted with `ruff`
+
+### Docstring Style (Google)
+
+Use Google-style docstrings for all public modules, classes, and functions.
+
+Template:
+
+```python
+def example(param: str) -> int:
+   """Short imperative summary.
+
+   Args:
+      param: Description of the parameter.
+
+   Returns:
+      Description of the returned value.
+
+   Raises:
+      ValueError: When input is invalid.
+   """
+```
+
+Guidelines used in this repository:
+- Start with a one-line summary ending with a period.
+- Add sections only when needed (`Args`, `Returns`, `Raises`).
+- Keep argument names exactly matching the function signature.
+- Prefer concise behavioral descriptions over implementation details.

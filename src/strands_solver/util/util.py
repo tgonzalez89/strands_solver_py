@@ -1,17 +1,22 @@
 """Input/output helpers and validation utilities for solver data files."""
 
-from __future__ import annotations
-
 import ast
+from random import Random
+from string import ascii_lowercase
 from typing import TYPE_CHECKING, Final
 
 if TYPE_CHECKING:
     from pathlib import Path
 
-    from strands_solver.solver import Coord
+type BoardCoord = tuple[int, int]
+type PixelCoord = tuple[int, int]
 
 MIN_WORD_LEN: Final = 4
+MIN_BOARD_DIMENSION: Final = MIN_WORD_LEN
+MAX_BOARD_DIMENSION: Final = 10
 COORD_PARTS_COUNT: Final = 2
+BLOCKED_CELL: Final = "#"
+VALID_BOARD_CHARS: Final = frozenset(ascii_lowercase + BLOCKED_CELL)
 
 
 def load_allowed_words(allowed_words_path: Path) -> list[str]:
@@ -43,8 +48,8 @@ def load_board(board_path: Path) -> list[str]:
     Returns:
         Lowercased board rows with surrounding whitespace stripped.
     """
-    with board_path.open() as f:
-        return [line.strip().lower() for line in f.readlines()]
+    with board_path.open(encoding="utf-8") as f:
+        return [line.strip().lower().replace(" ", "") for line in f.readlines()]
 
 
 def validate_board(board: list[str]) -> None:
@@ -58,11 +63,23 @@ def validate_board(board: list[str]) -> None:
     """
     len_prev_row: int | None = None
 
+    if len(board) < MIN_WORD_LEN:
+        raise ValueError(f"Board has only {len(board)} rows, less than minimum ({MIN_WORD_LEN}).")
+    if len(board) > MAX_BOARD_DIMENSION:
+        raise ValueError(f"Board has {len(board)} rows, more than maximum ({MAX_BOARD_DIMENSION}).")
+
     for row_idx, row in enumerate(board):
         if len(row) < MIN_WORD_LEN:
             raise ValueError(
                 f"Row number {row_idx + 1} has length ({len(row)}) less than minimum word length ({MIN_WORD_LEN})."
             )
+        if len(row) > MAX_BOARD_DIMENSION:
+            raise ValueError(
+                f"Row number {row_idx + 1} has length ({len(row)}) greater than maximum ({MAX_BOARD_DIMENSION})."
+            )
+        invalid_chars = sorted({char for char in row if char not in VALID_BOARD_CHARS})
+        if invalid_chars:
+            raise ValueError(f"Row number {row_idx + 1} contains invalid characters: {''.join(invalid_chars)}.")
 
         if len_prev_row is None:
             len_prev_row = len(row)
@@ -73,11 +90,24 @@ def validate_board(board: list[str]) -> None:
                 f"Row number {row_idx + 1} has length ({len(row)}) different from previous row ({len_prev_row})."
             )
 
-    if len(board) < MIN_WORD_LEN:
-        raise ValueError(f"Board has only {len(board)} rows, less than minimum ({MIN_WORD_LEN}).")
+
+def board_to_text(board: list[str], separator: str = "") -> str:
+    """Serialize a board into text rows separated by newlines."""
+    return "\n".join(separator.join(row) for row in board)
 
 
-def load_moves(moves_path: Path) -> list[list[Coord]]:
+def print_board(board: list[str], separator: str = "") -> None:
+    """Print a board to stdout."""
+    print(board_to_text(board, separator=separator))
+
+
+def dump_board(board: list[str], board_path: Path, separator: str = "") -> None:
+    """Write a board to a file path."""
+    board_path.parent.mkdir(parents=True, exist_ok=True)
+    board_path.write_text(board_to_text(board, separator=separator) + "\n", encoding="utf-8")
+
+
+def load_moves(moves_path: Path) -> list[list[BoardCoord]]:
     """Load move coordinate paths from disk.
 
     Each non-empty line must be a Python literal representing a list/tuple of
@@ -93,7 +123,7 @@ def load_moves(moves_path: Path) -> list[list[Coord]]:
         ValueError: If a line cannot be parsed as a Python literal.
         TypeError: If parsed structures do not match expected coord-pair shape.
     """
-    result: list[list[Coord]] = []
+    result: list[list[BoardCoord]] = []
 
     with moves_path.open() as f:
         for line_num, line in enumerate(f, start=1):
@@ -109,7 +139,7 @@ def load_moves(moves_path: Path) -> list[list[Coord]]:
             if not isinstance(raw_move, list | tuple):
                 raise TypeError(f"Line {line_num} must be a Python list/tuple of coordinate pairs.")
 
-            move: list[Coord] = []
+            move: list[BoardCoord] = []
             for coord in raw_move:
                 if not isinstance(coord, list | tuple) or len(coord) != COORD_PARTS_COUNT:
                     raise TypeError(f"Line {line_num} has invalid coord {coord!r}; expected pair[int, int].")
@@ -125,7 +155,7 @@ def load_moves(moves_path: Path) -> list[list[Coord]]:
     return result
 
 
-def validate_move_paths(valid_moves: list[list[Coord]], board: list[str]) -> None:
+def validate_move_paths(valid_moves: list[list[BoardCoord]], board: list[str]) -> None:
     """Validate move-path coordinates for uniqueness and bounds.
 
     Args:
@@ -136,7 +166,7 @@ def validate_move_paths(valid_moves: list[list[Coord]], board: list[str]) -> Non
         ValueError: If a path repeats coordinates or contains out-of-bounds cells.
     """
     for move_idx, move in enumerate(valid_moves):
-        seen_coords: set[Coord] = set()
+        seen_coords: set[BoardCoord] = set()
         for coord in move:
             if coord in seen_coords:
                 raise ValueError(f"Move {move_idx} contains duplicate coord {coord}.")
@@ -148,14 +178,20 @@ def validate_move_paths(valid_moves: list[list[Coord]], board: list[str]) -> Non
             seen_coords.add(coord)
 
 
-def coords_to_word(board: list[str], coords: list[Coord]) -> str:
-    """Convert a coordinate path into its board word.
+def generate_random_board(
+    rows: int = 8, cols: int = 6, *, include_blocked: bool = False, rng: Random | None = None
+) -> list[str]:
+    """Generate a random board within the supported size limits."""
+    if rows < MIN_BOARD_DIMENSION or rows > MAX_BOARD_DIMENSION:
+        raise ValueError(f"rows must be between {MIN_BOARD_DIMENSION} and {MAX_BOARD_DIMENSION}")
+    if cols < MIN_BOARD_DIMENSION or cols > MAX_BOARD_DIMENSION:
+        raise ValueError(f"cols must be between {MIN_BOARD_DIMENSION} and {MAX_BOARD_DIMENSION}")
 
-    Args:
-        board: Board rows used to look up letters.
-        coords: Path of `(row, col)` coordinates.
+    generator = rng or Random()
+    alphabet = ascii_lowercase + (BLOCKED_CELL if include_blocked else "")
+    return ["".join(generator.choice(alphabet) for _ in range(cols)) for _ in range(rows)]
 
-    Returns:
-        Word assembled by traversing `coords` in order.
-    """
+
+def coords_to_word(board: list[str], coords: list[BoardCoord]) -> str:
+    """Convert a coordinate path into its board word."""
     return "".join(board[row_idx][col_idx] for row_idx, col_idx in coords)

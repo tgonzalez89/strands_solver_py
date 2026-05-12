@@ -1,16 +1,12 @@
 """Trie-based solver utilities for finding valid word paths on a board."""
 
-from __future__ import annotations
-
 from dataclasses import dataclass, field
-from typing import Final, Self
+from typing import Self
 
-type Coord = tuple[int, int]
-MIN_WORD_LEN: Final = 4
-BLOCKED_CELL: Final = "#"
+from strands_solver.util.util import BLOCKED_CELL, MIN_WORD_LEN, BoardCoord
 
 
-def get_neighbor_coords(board: list[str], row: int, col: int) -> list[Coord]:
+def get_neighbor_coords(board: list[str], row: int, col: int) -> list[BoardCoord]:
     """Return all valid neighboring coordinates around a cell.
 
     Includes 8-directional adjacency and excludes the center coordinate itself.
@@ -23,7 +19,7 @@ def get_neighbor_coords(board: list[str], row: int, col: int) -> list[Coord]:
     Returns:
         Neighbor coordinates inside board bounds.
     """
-    neighbors: list[Coord] = []
+    neighbors: list[BoardCoord] = []
 
     for row_delta in (-1, 0, 1):
         for col_delta in (-1, 0, 1):
@@ -42,7 +38,7 @@ def get_neighbor_coords(board: list[str], row: int, col: int) -> list[Coord]:
     return neighbors
 
 
-def leaves_small_island(board: list[str], removed_path: list[Coord]) -> bool:
+def leaves_small_island(board: list[str], removed_path: list[BoardCoord]) -> bool:
     """Check whether removing a path creates too-small connected islands.
 
     Args:
@@ -89,7 +85,9 @@ class Node:
     is_word: bool = False
     children: dict[str, Self] = field(default_factory=dict)
 
-    def find_word_paths(self, board: list[str], current_path: list[Coord], found_paths: list[list[Coord]]) -> None:
+    def find_word_paths(
+        self, board: list[str], current_path: list[BoardCoord], found_paths: list[list[BoardCoord]]
+    ) -> None:
         """Recursively collect valid paths starting from this trie node.
 
         Args:
@@ -153,7 +151,7 @@ class Trie:
 
         node.is_word = True
 
-    def find_all_word_paths(self, board: list[str]) -> list[list[Coord]]:
+    def find_all_word_paths(self, board: list[str]) -> list[list[BoardCoord]]:
         """Find all valid trie word paths in the given board.
 
         Args:
@@ -162,7 +160,7 @@ class Trie:
         Returns:
             List of coordinate paths for all valid matched words.
         """
-        found_paths: list[list[Coord]] = []
+        found_paths: list[list[BoardCoord]] = []
 
         for row_idx, row in enumerate(board):
             for col_idx, char in enumerate(row):

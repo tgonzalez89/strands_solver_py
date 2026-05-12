@@ -26,7 +26,9 @@ Repository = "https://github.com/tgonzalez89/strands_solver"
 Issues = "https://github.com/tgonzalez89/strands_solver/issues"
 
 [project.scripts]
-strands_solver = "strands_solver.__main__:main"
+strands_solver = "strands_solver.cli.bot:main"
+strands_words = "strands_solver.cli.board_words:main"
+strands_board_image = "strands_solver.cli.board_image:main"
 
 # ---------------------------------------------------------------------------
 # Hatch build config (src layout)
@@ -45,6 +47,12 @@ dev = [
   "pytest-cov>=6.1",
   "ruff>=0.11",
   "ty>=0.0.1a8",
+]
+device = [
+  "numpy>=2.4.4",
+  "opencv-python>=4.13.0.92",
+  "pillow>=12.2.0",
+  "tesserocr>=2.10.0",
 ]
 
 # ---------------------------------------------------------------------------
@@ -136,7 +144,7 @@ xfail_strict = true
 [tool.coverage.run]
 source = ["src/strands_solver"]
 branch = true
-omit = ["*/cli.py"]             # CLI tested via integration; adjust as needed
+omit = ["*/cli/*.py"]           # CLI tested via integration; adjust as needed
 
 [tool.coverage.report]
 show_missing = true

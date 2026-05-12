@@ -1,4 +1,4 @@
-from strands_solver.solver import Trie, get_neighbor_coords, leaves_small_island
+from strands_solver.solver.solver import Trie, get_neighbor_coords, leaves_small_island
 
 
 def test_get_neighbor_coords_center_has_8_neighbors() -> None:

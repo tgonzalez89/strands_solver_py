@@ -1,12 +1,17 @@
 from pathlib import Path
+from random import Random
 
 import pytest
 
-from strands_solver.io_utils import (
+from strands_solver.util.util import (
+    BLOCKED_CELL,
     coords_to_word,
+    dump_board,
+    generate_random_board,
     load_allowed_words,
     load_board,
     load_moves,
+    print_board,
     validate_board,
     validate_move_paths,
 )
@@ -69,6 +74,27 @@ def test_validate_board_accepts_valid_board() -> None:
     board = ["abcd", "efgh", "ijkl", "mnop"]
 
     validate_board(board)
+
+
+def test_validate_board_rejects_too_many_rows() -> None:
+    board = ["abcd"] * 11
+
+    with pytest.raises(ValueError, match="more than maximum"):
+        validate_board(board)
+
+
+def test_validate_board_rejects_too_many_cols() -> None:
+    board = ["abcdefghijk"] * 4
+
+    with pytest.raises(ValueError, match="greater than maximum"):
+        validate_board(board)
+
+
+def test_validate_board_rejects_invalid_characters() -> None:
+    board = ["abc1", "efgh", "ijkl", "mnop"]
+
+    with pytest.raises(ValueError, match="invalid characters"):
+        validate_board(board)
 
 
 def test_load_moves_ignores_blank_lines_and_parses_coords(tmp_path: Path) -> None:
@@ -201,6 +227,21 @@ def test_validate_move_paths_accepts_tuple_move_and_list_coords() -> None:
     assert result is None
 
 
+def test_dump_board_writes_board_text(tmp_path: Path) -> None:
+    board_path = tmp_path / "board.txt"
+
+    dump_board(["abcd", "efgh"], board_path, separator=" ")
+
+    assert board_path.read_text() == "a b c d\ne f g h\n"
+
+
+def test_print_board_prints_board_text(capsys) -> None:
+    print_board(["abcd", "efgh"], separator=" ")
+
+    captured = capsys.readouterr()
+    assert captured.out == "a b c d\ne f g h\n"
+
+
 def test_coords_to_word_returns_word_for_path() -> None:
     board = ["test", "abcd", "rate", "wxyz"]
     coords = [(0, 0), (0, 1), (0, 2), (0, 3)]
@@ -212,3 +253,25 @@ def test_coords_to_word_returns_empty_for_empty_path() -> None:
     board = ["test", "abcd", "rate", "wxyz"]
 
     assert coords_to_word(board, []) == ""
+
+
+def test_generate_random_board_returns_requested_shape() -> None:
+    board = generate_random_board(rows=4, cols=5, rng=Random(0))
+
+    assert len(board) == 4
+    assert all(len(row) == 5 for row in board)
+    assert all(BLOCKED_CELL not in row for row in board)
+
+
+def test_generate_random_board_can_include_blocked_cells() -> None:
+    board = generate_random_board(rows=4, cols=4, include_blocked=True, rng=Random(1))
+
+    assert len(board) == 4
+    assert all(len(row) == 4 for row in board)
+    assert all(all(char.islower() or char == BLOCKED_CELL for char in row) for row in board)
+
+
+@pytest.mark.parametrize(("rows", "cols"), [(3, 4), (4, 3), (11, 4), (4, 11)])
+def test_generate_random_board_rejects_invalid_dimensions(rows: int, cols: int) -> None:
+    with pytest.raises(ValueError, match="between 4 and 10"):
+        generate_random_board(rows=rows, cols=cols)

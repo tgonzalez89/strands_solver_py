@@ -1,10 +1,21 @@
 """OpenCV + tesserocr board reader (v2) skeleton."""
 
-import importlib
+from __future__ import annotations
+
 import os
 from pathlib import Path
 from statistics import median
 from typing import TYPE_CHECKING, Any, cast
+
+try:
+    import cv2
+    import numpy as np
+    import tesserocr
+    from PIL import Image as PILImage
+
+    HAS_EXTRAS = True
+except ModuleNotFoundError:
+    HAS_EXTRAS = False
 
 from strands_solver.board_reader.board_reader_base import BoardReaderBase
 
@@ -33,6 +44,9 @@ class BoardReaderTesseractOpenCV2(BoardReaderBase):
 
     def __init__(self, rows: int = 8, cols: int = 6) -> None:
         """Initialize v2 reader with board geometry."""
+        if not HAS_EXTRAS:
+            msg = "Extra dependencies not found."
+            raise NotImplementedError(msg)
         super().__init__(rows=rows, cols=cols)
         self.debug_mode = False
         self.debug_output_dir = ".debug"
@@ -52,27 +66,25 @@ class BoardReaderTesseractOpenCV2(BoardReaderBase):
         Raises:
             ValueError: If screenshot bytes are empty or cannot be decoded.
             NotImplementedError: If OpenCV or NumPy are unavailable.
+
         """
         if not screenshot:
-            raise ValueError("screenshot cannot be empty")
-
-        try:
-            cv2 = importlib.import_module("cv2")
-            np = importlib.import_module("numpy")
-        except ImportError as exc:
-            raise NotImplementedError("OpenCV and NumPy are required to decode screenshots") from exc
+            msg = "screenshot cannot be empty"
+            raise ValueError(msg)
 
         image_bytes = np.frombuffer(screenshot, dtype=np.uint8)
         image = cv2.imdecode(image_bytes, cv2.IMREAD_COLOR)
 
         if image is None:
-            raise ValueError("Unable to decode screenshot bytes as an image")
+            msg = "Unable to decode screenshot bytes as an image"
+            raise ValueError(msg)
 
         return image
 
     def _extract_cell_states(self, image: object) -> CellStateGrid:
         """TODO: Infer each cell highlight state from the decoded image."""
-        raise NotImplementedError("TODO: implement cell-state extraction")
+        msg = "TODO: implement cell-state extraction"
+        raise NotImplementedError(msg)
 
     def _extract_cell_centers(self, image: object) -> list[list[tuple[int, int]]]:
         """Locate each board cell center using circle detection and grid fitting.
@@ -92,16 +104,11 @@ class BoardReaderTesseractOpenCV2(BoardReaderBase):
         ]
 
         # Original detection code (kept for reference, but early return above bypasses it):
-        try:
-            cv2 = importlib.import_module("cv2")
-            np = importlib.import_module("numpy")
-        except ImportError as exc:
-            raise NotImplementedError("OpenCV and NumPy are required to extract cell centers") from exc
-
         min_shape_dims = 2
         shape = getattr(image, "shape", None)
         if not isinstance(shape, tuple) or len(shape) < min_shape_dims:
-            raise ValueError("image must be a valid OpenCV image array")
+            msg = "image must be a valid OpenCV image array"
+            raise ValueError(msg)
 
         image_h, image_w = int(shape[0]), int(shape[1])
         typed_image = cast("Any", image)
@@ -194,7 +201,7 @@ class BoardReaderTesseractOpenCV2(BoardReaderBase):
 
         return x_lines, y_lines
 
-    def _fit_axis_lines(
+    def _fit_axis_lines(  # noqa: C901
         self,
         axis_values: list[int],
         expected_count: int,
@@ -281,8 +288,7 @@ class BoardReaderTesseractOpenCV2(BoardReaderBase):
     def _extract_board_rows(self, image: object) -> list[str]:
         """Extract board letters by trying multiple OCR strategies and selecting best output."""
         candidates = self._extract_board_rows_candidates(image)
-        best_rows = max(candidates.values(), key=self._score_board_rows)
-        return best_rows
+        return max(candidates.values(), key=self._score_board_rows)
 
     def _extract_board_rows_candidates(self, image: object) -> dict[str, list[str]]:
         """Return OCR candidates for full-board, per-line, and per-cell strategies."""
@@ -336,9 +342,6 @@ class BoardReaderTesseractOpenCV2(BoardReaderBase):
         centers: list[list[tuple[int, int]]],
     ) -> list[list[object]]:
         """Crop cells uniformly around centers based on measured spacing."""
-        cv2 = importlib.import_module("cv2")
-        np = importlib.import_module("numpy")
-
         typed_image = cast("Any", image)
         gray = cv2.cvtColor(typed_image, cv2.COLOR_BGR2GRAY)
 
@@ -392,8 +395,8 @@ class BoardReaderTesseractOpenCV2(BoardReaderBase):
 
         return normalized_cells
 
-    def _trim_and_pad_cell(self, cell_bin: object, pad: int = 6) -> object:
-        """Deprecated: no longer used. Keeping for compatibility."""
+    def _trim_and_pad_cell(self, cell_bin: object) -> object:
+        """Return the cell image unchanged for compatibility."""
         return cell_bin
 
     def _ocr_full_board(self, cells: list[list[object]]) -> list[str]:
@@ -431,9 +434,6 @@ class BoardReaderTesseractOpenCV2(BoardReaderBase):
 
     def _ocr_single_cell_char(self, cell: object, row_idx: int, col_idx: int) -> str:
         """OCR one cell (fixed 64x64 input) with morphology variants for robustness."""
-        cv2 = importlib.import_module("cv2")
-        np = importlib.import_module("numpy")
-
         typed_cell = cast("Any", cell)
         if self.debug_mode and self.save_debug_images and self.debug_output_dir:
             self._save_debug_image(typed_cell, f"cell_r{row_idx:02d}_c{col_idx:02d}_prep")
@@ -458,9 +458,6 @@ class BoardReaderTesseractOpenCV2(BoardReaderBase):
 
     def _stitch_cells(self, cells: list[list[object]], pad: int = 8) -> object:
         """Stitch normalized cell images into one white canvas for OCR."""
-        cv2 = importlib.import_module("cv2")
-        np = importlib.import_module("numpy")
-
         if not cells or not cells[0]:
             return np.full((32, 32), 255, dtype=np.uint8)
 
@@ -491,8 +488,6 @@ class BoardReaderTesseractOpenCV2(BoardReaderBase):
 
     def _save_debug_image(self, image: object, name: str) -> None:
         """Save image to debug output directory."""
-        cv2 = importlib.import_module("cv2")
-
         if not self.debug_output_dir:
             return
         output_dir = Path(self.debug_output_dir)
@@ -503,14 +498,8 @@ class BoardReaderTesseractOpenCV2(BoardReaderBase):
 
     def _tesseract_text(self, gray_image: object, psm_name: str) -> str:
         """Run tesserocr on one grayscale image and return raw UTF-8 text."""
-        try:
-            pil_image_module = importlib.import_module("PIL.Image")
-            tesserocr = importlib.import_module("tesserocr")
-        except ImportError as exc:
-            raise NotImplementedError("tesserocr and Pillow are required for OCR") from exc
-
         typed_gray_image = cast("Any", gray_image)
-        pil_image = pil_image_module.fromarray(typed_gray_image)
+        pil_image = PILImage.fromarray(typed_gray_image)
         psm_value = getattr(tesserocr.PSM, psm_name)
         tessdata_path = self._resolve_tessdata_path()
         if tessdata_path is None:
@@ -526,14 +515,8 @@ class BoardReaderTesseractOpenCV2(BoardReaderBase):
 
     def _tesseract_text_with_conf(self, gray_image: object, psm_name: str) -> tuple[str, int]:
         """Run tesserocr and return UTF-8 text with mean confidence."""
-        try:
-            pil_image_module = importlib.import_module("PIL.Image")
-            tesserocr = importlib.import_module("tesserocr")
-        except ImportError as exc:
-            raise NotImplementedError("tesserocr and Pillow are required for OCR") from exc
-
         typed_gray_image = cast("Any", gray_image)
-        pil_image = pil_image_module.fromarray(typed_gray_image)
+        pil_image = PILImage.fromarray(typed_gray_image)
         psm_value = getattr(tesserocr.PSM, psm_name)
         tessdata_path = self._resolve_tessdata_path()
 

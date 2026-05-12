@@ -1,9 +1,20 @@
 """OpenCV + Tesseract board-reader implementation."""
 
+from __future__ import annotations
+
 import colorsys
 import re
-from importlib import import_module
 from typing import TYPE_CHECKING, Any, cast
+
+try:
+    import cv2
+    import numpy as np
+    import tesserocr
+    from PIL import Image as PILImage
+
+    HAS_EXTRAS = True
+except ModuleNotFoundError:
+    HAS_EXTRAS = False
 
 from strands_solver.board_reader.board_reader import CellStateGrid, Highlight
 from strands_solver.board_reader.board_reader_base import BoardReaderBase
@@ -60,7 +71,8 @@ class BoardReaderTesseractOpenCv(BoardReaderBase):
         buffer = np_any.frombuffer(screenshot, dtype=np_any.uint8)
         image = cv2_any.imdecode(buffer, cv2_any.IMREAD_COLOR)
         if image is None:
-            raise ValueError("screenshot is not a valid image payload")
+            msg = "screenshot is not a valid image payload"
+            raise ValueError(msg)
         return image
 
     def _estimate_board_rect(self, image: object) -> tuple[int, int, int, int]:
@@ -97,7 +109,8 @@ class BoardReaderTesseractOpenCv(BoardReaderBase):
         return self._compute_cell_centers_from_geometry(self._default_grid_geometry(board_rect))
 
     def _compute_cell_centers_from_geometry(
-        self, grid_geometry: tuple[float, float, float, float]
+        self,
+        grid_geometry: tuple[float, float, float, float],
     ) -> list[list[PixelCoord]]:
         x, y, cell_width, cell_height = grid_geometry
         centers: list[list[PixelCoord]] = []
@@ -128,11 +141,12 @@ class BoardReaderTesseractOpenCv(BoardReaderBase):
 
         Raises:
             NotImplementedError: If `tesserocr` is not installed.
+
         """
-        try:
-            return import_module("tesserocr")
-        except ModuleNotFoundError as error:  # pragma: no cover - env dependent
-            raise NotImplementedError("OpenCV reader requires `tesserocr`") from error
+        if not HAS_EXTRAS:  # pragma: no cover - env dependent
+            msg = "OpenCV reader requires device extras"
+            raise NotImplementedError(msg)
+        return cast("Any", tesserocr)
 
     @staticmethod
     def _load_pil() -> object:
@@ -143,11 +157,12 @@ class BoardReaderTesseractOpenCv(BoardReaderBase):
 
         Raises:
             NotImplementedError: If Pillow is not installed.
+
         """
-        try:
-            return import_module("PIL.Image")
-        except ModuleNotFoundError as error:  # pragma: no cover - env dependent
-            raise NotImplementedError("OpenCV reader requires `Pillow`") from error
+        if not HAS_EXTRAS:  # pragma: no cover - env dependent
+            msg = "OpenCV reader requires device extras"
+            raise NotImplementedError(msg)
+        return cast("Any", PILImage)
 
     def _ocr_board(self, image: object, board_rect: tuple[int, int, int, int]) -> list[str]:
         """Run character OCR across all board cells.
@@ -158,11 +173,12 @@ class BoardReaderTesseractOpenCv(BoardReaderBase):
 
         Returns:
             OCR-extracted board rows.
+
         """
         tesserocr = cast("Any", self._load_ocr_module())
         pil_image_module = cast("Any", self._load_pil())
-        cv2_any = cast("Any", import_module("cv2"))
-        np_any = cast("Any", import_module("numpy"))
+        cv2_any = cast("Any", cv2)
+        np_any = cast("Any", np)
         psm_single_char = tesserocr.PSM.SINGLE_CHAR
         psm_single_word = getattr(tesserocr.PSM, "SINGLE_WORD", psm_single_char)
         psm_single_line = getattr(tesserocr.PSM, "SINGLE_LINE", psm_single_word)
@@ -200,7 +216,7 @@ class BoardReaderTesseractOpenCv(BoardReaderBase):
 
         return rows
 
-    def _ocr_board_by_rows(
+    def _ocr_board_by_rows(  # noqa: C901
         self,
         image: object,
         grid_geometry: tuple[float, float, float, float],
@@ -326,9 +342,11 @@ class BoardReaderTesseractOpenCv(BoardReaderBase):
             cell_rect: Cell rectangle `(x0, y0, x1, y1)`.
             api: Active tesserocr API instance.
             pil_image_module: Imported Pillow image module.
+            cv2_module: Optional imported OpenCV module override.
 
         Returns:
             Tuple of normalized character and OCR confidence.
+
         """
         x0, y0, x1, y1 = cell_rect
         img_array = cast("Any", image)
@@ -336,7 +354,7 @@ class BoardReaderTesseractOpenCv(BoardReaderBase):
         if cell_bgr.size == 0:
             return ("", -1)
 
-        cv2_any = cast("Any", cv2_module if cv2_module is not None else import_module("cv2"))
+        cv2_any = cast("Any", cv2_module if cv2_module is not None else cv2)
         pil_mod = cast("Any", pil_image_module)
 
         api_obj = cast("Any", api)
@@ -409,7 +427,7 @@ class BoardReaderTesseractOpenCv(BoardReaderBase):
             return refined
         return self._default_grid_geometry(board_rect)
 
-    def _refine_grid_geometry_from_text(
+    def _refine_grid_geometry_from_text(  # noqa: C901
         self,
         image: object,
         board_rect: tuple[int, int, int, int],
@@ -441,10 +459,16 @@ class BoardReaderTesseractOpenCv(BoardReaderBase):
                     continue
 
                 x_positions = self._cluster_axis_positions(
-                    [center_x for center_x, _ in centers], self._cols, cv2_any, np_any
+                    [center_x for center_x, _ in centers],
+                    self._cols,
+                    cv2_any,
+                    np_any,
                 )
                 y_positions = self._cluster_axis_positions(
-                    [center_y for _, center_y in centers], self._rows, cv2_any, np_any
+                    [center_y for _, center_y in centers],
+                    self._rows,
+                    cv2_any,
+                    np_any,
                 )
                 if x_positions is None or y_positions is None:
                     continue
@@ -480,7 +504,7 @@ class BoardReaderTesseractOpenCv(BoardReaderBase):
                     best_score = score
                     best_geometry = (origin_x, origin_y, cell_width, cell_height)
 
-        except Exception:
+        except Exception:  # noqa: BLE001
             return None
         else:
             return best_geometry
@@ -558,7 +582,12 @@ class BoardReaderTesseractOpenCv(BoardReaderBase):
         samples = np_any.array(values, dtype=np_any.float32).reshape(-1, 1)
         criteria = (cv2_any.TERM_CRITERIA_EPS + cv2_any.TERM_CRITERIA_MAX_ITER, 100, 0.2)
         _compactness, labels, centers = cv2_any.kmeans(
-            samples, cluster_count, None, criteria, 10, cv2_any.KMEANS_PP_CENTERS
+            samples,
+            cluster_count,
+            None,
+            criteria,
+            10,
+            cv2_any.KMEANS_PP_CENTERS,
         )
 
         positions = sorted(float(center[0]) for center in centers)
@@ -639,10 +668,9 @@ class BoardReaderTesseractOpenCv(BoardReaderBase):
         )
         if is_yellow:
             return Highlight.SPANGRAM
-        elif is_blue:
+        if is_blue:
             return Highlight.WORD
-        else:
-            return Highlight.NONE
+        return Highlight.NONE
 
     def _compute_cell_states(self, image: object, cell_centers: list[list[PixelCoord]]) -> CellStateGrid:
         """Compute cell states from image colors at cell centers."""
@@ -658,6 +686,7 @@ class BoardReaderTesseractOpenCv(BoardReaderBase):
 
         Returns:
             Board rectangle as `(x, y, width, height)`.
+
         """
         cv2 = cast("Any", cv2_module)
         image_array = cast("Any", image)
@@ -715,14 +744,13 @@ class BoardReaderTesseractOpenCv(BoardReaderBase):
 
         Raises:
             NotImplementedError: If OpenCV or NumPy is not installed.
-        """
-        try:
-            cv2_module = import_module("cv2")
-            numpy_module = import_module("numpy")
-        except ModuleNotFoundError as error:  # pragma: no cover - env dependent
-            raise NotImplementedError("OpenCV reader requires `opencv-python` and `numpy`") from error
 
-        return cv2_module, numpy_module
+        """
+        if not HAS_EXTRAS:  # pragma: no cover - env dependent
+            msg = "OpenCV reader requires device extras"
+            raise NotImplementedError(msg)
+
+        return cast("Any", cv2), cast("Any", np)
 
     @staticmethod
     def _sample_cell_colors(image: object, cell_centers: list[list[PixelCoord]]) -> list[list[tuple[int, int, int]]]:
@@ -734,6 +762,7 @@ class BoardReaderTesseractOpenCv(BoardReaderBase):
 
         Returns:
             Per-cell sampled mean BGR colors aligned to board coordinates.
+
         """
         image_array = cast("Any", image)
         image_height, image_width = image_array.shape[:2]
@@ -793,6 +822,7 @@ class BoardReaderTesseractOpenCv(BoardReaderBase):
 
         Returns:
             Mean `(hue, saturation, value)` tuple.
+
         """
         hues: list[float] = []
         sats: list[float] = []

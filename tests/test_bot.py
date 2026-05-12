@@ -23,7 +23,7 @@ class _FakeDriver(DeviceDriver):
 
 
 class _FakeReader(BoardReader):
-    def __init__(self, states: list[list[str]], verify_result: bool = True) -> None:
+    def __init__(self, states: list[list[str]], *, verify_result: bool = True) -> None:
         self._states = states
         self._state_idx = 0
         self._feedback = Highlight.WORD if verify_result else Highlight.NONE
@@ -49,7 +49,7 @@ class _FakeReader(BoardReader):
 
 
 class BotDeviceDouble(BotDevice):
-    def __init__(self, states: list[list[str]], verify_result: bool = True) -> None:
+    def __init__(self, states: list[list[str]], *, verify_result: bool = True) -> None:
         self._driver = _FakeDriver()
         self._reader = _FakeReader(states, verify_result=verify_result)
         super().__init__(driver=self._driver, reader=self._reader)
@@ -176,7 +176,7 @@ def test_device_bot_get_board_uses_extracted_state() -> None:
     bot = BotDeviceDouble(
         [
             ["test", "abcd", "rate", "wxyz"],
-        ]
+        ],
     )
 
     assert bot.get_board() == ["test", "abcd", "rate", "wxyz"]

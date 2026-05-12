@@ -1,9 +1,13 @@
 from argparse import Namespace
 from pathlib import Path
-from typing import cast
+from typing import TYPE_CHECKING, cast
+
+import pytest
 
 import strands_solver.cli.bot as cli
-from strands_solver.solver.solver import Trie
+
+if TYPE_CHECKING:
+    from strands_solver.solver.solver import Trie
 
 
 class _TrieStub:
@@ -37,16 +41,17 @@ def test_run_appium_mode_rejects_board_and_moves() -> None:
     assert result == 2
 
 
-def test_run_appium_mode_handles_not_ready(monkeypatch) -> None:
+def test_run_appium_mode_handles_not_ready(monkeypatch: pytest.MonkeyPatch) -> None:
     args = _args(driver="appium")
 
     class _Bot:
         def __init__(self, driver: object, reader: object) -> None:
             _ = driver, reader
 
-        def run(self, trie: object, verbose: bool = False) -> list[tuple[str, list[tuple[int, int]]]]:
+        def run(self, trie: object, *, verbose: bool = False) -> list[tuple[str, list[tuple[int, int]]]]:
             _ = trie, verbose
-            raise NotImplementedError("not configured")
+            msg = "not configured"
+            raise NotImplementedError(msg)
 
     monkeypatch.setattr(cli, "BotDevice", _Bot)
 
@@ -63,7 +68,7 @@ def test_run_fake_mode_requires_board_and_moves() -> None:
     assert result == 2
 
 
-def test_run_fake_mode_success(monkeypatch) -> None:
+def test_run_fake_mode_success(monkeypatch: pytest.MonkeyPatch) -> None:
     args = _args(driver="fake", board=Path("board.txt"), valid_moves=Path("moves.txt"), spangram_index=[0])
 
     class _FakeBot:
@@ -71,7 +76,7 @@ def test_run_fake_mode_success(monkeypatch) -> None:
             _ = kwargs
             self.expected_move_count = 1
 
-        def run(self, trie: object, verbose: bool = False) -> list[tuple[str, list[tuple[int, int]]]]:
+        def run(self, trie: object, *, verbose: bool = False) -> list[tuple[str, list[tuple[int, int]]]]:
             _ = trie, verbose
             return [("word", [(0, 0), (0, 1), (0, 2), (0, 3)])]
 
@@ -85,13 +90,14 @@ def test_run_fake_mode_success(monkeypatch) -> None:
     assert result == 0
 
 
-def test_run_fake_mode_handles_initial_ocr_mismatch(monkeypatch) -> None:
+def test_run_fake_mode_handles_initial_ocr_mismatch(monkeypatch: pytest.MonkeyPatch) -> None:
     args = _args(driver="fake", board=Path("board.txt"), valid_moves=Path("moves.txt"))
 
     class _FakeBot:
         def __init__(self, **kwargs: object) -> None:
             _ = kwargs
-            raise cli.InitialOcrMismatchError("mismatch details")
+            msg = "mismatch details"
+            raise cli.InitialOcrMismatchError(msg)
 
     monkeypatch.setattr(cli, "BotDeviceFake", _FakeBot)
 
@@ -108,14 +114,14 @@ def test_run_file_mode_requires_moves() -> None:
     assert result == 2
 
 
-def test_run_file_mode_verification(monkeypatch) -> None:
+def test_run_file_mode_verification(monkeypatch: pytest.MonkeyPatch) -> None:
     args = _args(driver="file", board=Path("board.txt"), valid_moves=Path("moves.txt"))
 
     class _Bot:
         def __init__(self, board: Path, moves: Path) -> None:
             _ = board, moves
 
-        def run(self, trie: object, verbose: bool = False) -> list[tuple[str, list[tuple[int, int]]]]:
+        def run(self, trie: object, *, verbose: bool = False) -> list[tuple[str, list[tuple[int, int]]]]:
             _ = trie, verbose
             return [("word", [(0, 0), (0, 1), (0, 2), (0, 3)])]
 
@@ -130,7 +136,7 @@ def test_run_file_mode_verification(monkeypatch) -> None:
     assert result == 0
 
 
-def test_main_dispatches_to_file_mode(monkeypatch) -> None:
+def test_main_dispatches_to_file_mode(monkeypatch: pytest.MonkeyPatch) -> None:
     monkeypatch.setattr(
         cli,
         "parse_args",
@@ -151,7 +157,7 @@ def test_main_dispatches_to_file_mode(monkeypatch) -> None:
         def __init__(self, board: Path, moves: list[list[tuple[int, int]]]) -> None:
             _ = board, moves
 
-        def run(self, trie: object, verbose: bool = False) -> list[tuple[str, list[tuple[int, int]]]]:
+        def run(self, trie: object, *, verbose: bool = False) -> list[tuple[str, list[tuple[int, int]]]]:
             _ = trie, verbose
             return []
 
@@ -165,7 +171,7 @@ def test_main_dispatches_to_file_mode(monkeypatch) -> None:
     assert result == 0
 
 
-def test_main_dispatches_to_appium_mode(monkeypatch) -> None:
+def test_main_dispatches_to_appium_mode(monkeypatch: pytest.MonkeyPatch) -> None:
     monkeypatch.setattr(cli, "parse_args", lambda argv=None: _args(driver="appium"))
     monkeypatch.setattr(cli, "load_allowed_words", lambda path: ["word"])
 
@@ -179,7 +185,7 @@ def test_main_dispatches_to_appium_mode(monkeypatch) -> None:
         def __init__(self, driver: object, reader: object) -> None:
             _ = driver, reader
 
-        def run(self, trie: object, verbose: bool = False) -> list[tuple[str, list[tuple[int, int]]]]:
+        def run(self, trie: object, *, verbose: bool = False) -> list[tuple[str, list[tuple[int, int]]]]:
             _ = trie, verbose
             return []
 

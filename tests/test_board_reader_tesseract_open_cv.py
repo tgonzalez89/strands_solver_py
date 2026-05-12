@@ -127,7 +127,6 @@ class _MockPilImage:
 
 def _make_numpy_image(rows: int, cols: int) -> object:
     """Create a small solid-colour BGR numpy image."""
-
     return np.full((rows, cols, 3), 128, dtype=np.uint8)
 
 

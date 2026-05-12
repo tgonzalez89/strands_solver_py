@@ -1,5 +1,7 @@
 """Grid-aware base class for screenshot-based board readers."""
 
+from __future__ import annotations
+
 import zlib
 from abc import abstractmethod
 from typing import TYPE_CHECKING
@@ -29,11 +31,14 @@ class BoardReaderBase(BoardReader):
 
         Raises:
             ValueError: If grid size is outside allowed thresholds.
+
         """
         if rows < MIN_BOARD_DIMENSION or cols < MIN_BOARD_DIMENSION:
-            raise ValueError(f"rows and cols must both be >= {MIN_BOARD_DIMENSION}")
+            msg = f"rows and cols must both be >= {MIN_BOARD_DIMENSION}"
+            raise ValueError(msg)
         if rows > MAX_BOARD_DIMENSION or cols > MAX_BOARD_DIMENSION:
-            raise ValueError(f"rows and cols must both be <= {MAX_BOARD_DIMENSION}")
+            msg = f"rows and cols must both be <= {MAX_BOARD_DIMENSION}"
+            raise ValueError(msg)
 
         self._rows = rows
         self._cols = cols
@@ -58,6 +63,7 @@ class BoardReaderBase(BoardReader):
         Raises:
             ValueError: If the bytes cannot be decoded into a valid image.
             NotImplementedError: If required image dependencies are not installed.
+
         """
 
     @abstractmethod
@@ -69,6 +75,7 @@ class BoardReaderBase(BoardReader):
 
         Returns:
             2D list of cell states corresponding to the board grid.
+
         """
 
     @abstractmethod
@@ -80,6 +87,7 @@ class BoardReaderBase(BoardReader):
 
         Returns:
             2D list of pixel coordinates corresponding to the center of each cell.
+
         """
 
     @abstractmethod
@@ -91,6 +99,7 @@ class BoardReaderBase(BoardReader):
 
         Returns:
             List of strings, one per board row, each of length ``self._cols``.
+
         """
 
     # ------------------------------------------------------------------
@@ -109,23 +118,25 @@ class BoardReaderBase(BoardReader):
         Raises:
             ValueError: If the screenshot is empty or not a valid image.
             NotImplementedError: If required image dependencies are not installed.
+
         """
         if not screenshot:
-            raise ValueError("screenshot cannot be empty")
+            msg = "screenshot cannot be empty"
+            raise ValueError(msg)
 
         screenshot_hash = zlib.crc32(screenshot)
         if self._last_screenshot_hash == screenshot_hash and self._last_state is not None:
             return self._last_state
 
         image = self._decode_image(screenshot)
+        self._last_cell_centers = self._extract_cell_centers(image)
         cell_states = self._extract_cell_states(image)
 
-        # Re-extract board rows and cell centers if cell states have changed since last extraction.
-        # Not striclty necessary since the board letters and cell centers shouldn't change during a game.
+        # Re-extract board rows if cell states have changed since last extraction.
+        # Not strictly necessary since the board letters shouldn't change during a game.
         last_cell_states = self._last_state.cell_states if self._last_state is not None else None
         if cell_states != last_cell_states or self._last_state is None:
             board = self._extract_board_rows(image)
-            self._last_cell_centers = self._extract_cell_centers(image)
         else:
             board = self._last_state.board.copy()
 
@@ -144,6 +155,7 @@ class BoardReaderBase(BoardReader):
 
         Returns:
             Classified move outcome as none, word, or spangram.
+
         """
         if not move:
             return Highlight.NONE
@@ -169,10 +181,9 @@ class BoardReaderBase(BoardReader):
 
         if has_spangram:
             return Highlight.SPANGRAM
-        elif has_word:
+        if has_word:
             return Highlight.WORD
-        else:
-            return Highlight.NONE
+        return Highlight.NONE
 
     def board_move_to_pixel_path(self, move: list[BoardCoord]) -> list[PixelCoord]:
         """Convert board coordinates to device pixel coordinates.
@@ -185,8 +196,10 @@ class BoardReaderBase(BoardReader):
 
         Raises:
             ValueError: If cell geometry is not available or a coordinate is missing.
+
         """
         if not self._last_cell_centers:
-            raise ValueError("Cell geometry not available; call extract_state first")
+            msg = "Cell geometry not available; call extract_state first"
+            raise ValueError(msg)
 
         return [self._last_cell_centers[row_idx][col_idx] for row_idx, col_idx in move]

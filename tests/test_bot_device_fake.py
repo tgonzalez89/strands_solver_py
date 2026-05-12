@@ -38,7 +38,8 @@ def _render_board_rect() -> tuple[int, int, int, int]:
 
 
 def _renderer_centers(
-    reader: BoardReaderTesseractOpenCv, board_rect: tuple[int, int, int, int]
+    reader: BoardReaderTesseractOpenCv,
+    board_rect: tuple[int, int, int, int],
 ) -> list[list[PixelCoord]]:
     x, y, width, height = board_rect
     cell_width = width / reader._cols

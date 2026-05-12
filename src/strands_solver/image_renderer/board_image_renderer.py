@@ -1,22 +1,19 @@
 """Reusable Strands board image rendering utilities."""
 
-import importlib
+from __future__ import annotations
+
 from dataclasses import dataclass
 from io import BytesIO
 from typing import TYPE_CHECKING, Any, cast
 
-PILImage: Any
-PILImageDraw: Any
-PILImageFont: Any
-
 try:
-    PILImage = importlib.import_module("PIL.Image")
-    PILImageDraw = importlib.import_module("PIL.ImageDraw")
-    PILImageFont = importlib.import_module("PIL.ImageFont")
+    from PIL import Image as PILImage
+    from PIL import ImageDraw as PILImageDraw
+    from PIL import ImageFont as PILImageFont
+
+    HAS_EXTRAS = True
 except ModuleNotFoundError:
-    PILImage = None
-    PILImageDraw = None
-    PILImageFont = None
+    HAS_EXTRAS = False
 
 if TYPE_CHECKING:
     from pathlib import Path
@@ -80,6 +77,7 @@ def pick_theme(mode: str) -> Theme:
 
     Returns:
         Theme configuration for the selected mode.
+
     """
     if mode == "light":
         return LIGHT_THEME
@@ -95,17 +93,21 @@ def validate_board_shape(board_rows: list[str]) -> None:
     Raises:
         ValueError: If the board is empty, has empty first row, or has
             inconsistent row widths.
+
     """
     if not board_rows:
-        raise ValueError("Board is empty.")
+        msg = "Board is empty."
+        raise ValueError(msg)
 
     width = len(board_rows[0])
     if width == 0:
-        raise ValueError("Board has an empty first row.")
+        msg = "Board has an empty first row."
+        raise ValueError(msg)
 
     for row_num, row in enumerate(board_rows, start=1):
         if len(row) != width:
-            raise ValueError(f"Board row {row_num} has width {len(row)} but expected {width}.")
+            msg = f"Board row {row_num} has width {len(row)} but expected {width}."
+            raise ValueError(msg)
 
 
 def build_coord_sets(
@@ -124,6 +126,7 @@ def build_coord_sets(
 
     Returns:
         Tuple of `(word_coords, spangram_coords)` highlight sets.
+
     """
     word_coords: set[BoardCoord] = set()
     spangram_coords: set[BoardCoord] = set()
@@ -149,9 +152,17 @@ def _load_font(config: RenderConfig, font_size: int) -> object:
 
     Raises:
         ModuleNotFoundError: If Pillow is not installed.
+
     """
-    if PILImageFont is None:
-        raise ModuleNotFoundError("Pillow is required. Install with `uv sync --group device` or `pip install pillow`.")
+    if not HAS_EXTRAS:
+        msg = (
+            "Pillow is required. Install optional deps with "
+            "`uv sync --extra device`, `pip install .[device]`, "
+            "or `pip install pillow`."
+        )
+        raise ModuleNotFoundError(
+            msg,
+        )
 
     image_font = cast("Any", PILImageFont)
 
@@ -164,7 +175,7 @@ def _load_font(config: RenderConfig, font_size: int) -> object:
         return image_font.load_default()
 
 
-def render_board_png(
+def render_board_png(  # noqa: PLR0915
     board_rows: list[str],
     *,
     mode: str,
@@ -187,16 +198,25 @@ def render_board_png(
     Raises:
         ModuleNotFoundError: If Pillow is not installed.
         ValueError: If board shape or render dimensions are invalid.
+
     """
-    if PILImage is None or PILImageDraw is None:
-        raise ModuleNotFoundError("Pillow is required. Install with `uv sync --group device` or `pip install pillow`.")
+    if not HAS_EXTRAS:
+        msg = (
+            "Pillow is required. Install optional deps with "
+            "`uv sync --extra device`, `pip install .[device]`, "
+            "or `pip install pillow`."
+        )
+        raise ModuleNotFoundError(
+            msg,
+        )
 
     normalized_rows = [row.upper() for row in board_rows]
     validate_board_shape(normalized_rows)
 
     cfg = config or RenderConfig()
     if cfg.width <= 0 or cfg.height <= 0:
-        raise ValueError("Render width and height must be positive integers.")
+        msg = "Render width and height must be positive integers."
+        raise ValueError(msg)
 
     rows = len(normalized_rows)
     cols = len(normalized_rows[0])

@@ -39,6 +39,7 @@ class DeviceDriverFake(DeviceDriver):
 
         Raises:
             ValueError: If board shape or move coordinates are invalid.
+
         """
         loaded_board = load_board(board) if isinstance(board, Path) else board.copy()
         loaded_moves = (
@@ -83,6 +84,7 @@ class DeviceDriverFake(DeviceDriver):
 
         Returns:
             PNG-encoded screenshot bytes.
+
         """
         if not self._is_dirty and self._cached_screenshot is not None and self._cached_centers is not None:
             self._coord_by_pixel = {pixel: coord for coord, pixel in self._cached_centers.items()}
@@ -109,15 +111,18 @@ class DeviceDriverFake(DeviceDriver):
 
         Raises:
             ValueError: If the path is empty or contains unknown pixels.
+
         """
         if not pixel_path:
-            raise ValueError("pixel_path must contain at least one coordinate")
+            msg = "pixel_path must contain at least one coordinate"
+            raise ValueError(msg)
 
         move_coords: list[BoardCoord] = []
         for pixel in pixel_path:
             coord = self._coord_by_pixel.get(pixel)
             if coord is None:
-                raise ValueError(f"pixel not found in current board centers: {pixel}")
+                msg = f"pixel not found in current board centers: {pixel}"
+                raise ValueError(msg)
             move_coords.append(coord)
 
         move_key = tuple(move_coords)

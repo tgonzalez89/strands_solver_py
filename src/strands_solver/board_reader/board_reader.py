@@ -1,5 +1,7 @@
 """Abstract board-reader interfaces and shared state types."""
 
+from __future__ import annotations
+
 from abc import ABC, abstractmethod
 from dataclasses import dataclass
 from enum import StrEnum
@@ -51,4 +53,5 @@ class BoardReader(ABC):
 
         Raises:
             ValueError: If cell geometry not available or path invalid.
+
         """

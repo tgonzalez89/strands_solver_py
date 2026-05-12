@@ -18,6 +18,7 @@ def get_neighbor_coords(board: list[str], row: int, col: int) -> list[BoardCoord
 
     Returns:
         Neighbor coordinates inside board bounds.
+
     """
     neighbors: list[BoardCoord] = []
 
@@ -48,6 +49,7 @@ def leaves_small_island(board: list[str], removed_path: list[BoardCoord]) -> boo
     Returns:
         True if any remaining connected component has size less than
         `MIN_WORD_LEN`; otherwise False.
+
     """
     removed_coords = set(removed_path)
     remaining_coords = {
@@ -86,7 +88,10 @@ class Node:
     children: dict[str, Self] = field(default_factory=dict)
 
     def find_word_paths(
-        self, board: list[str], current_path: list[BoardCoord], found_paths: list[list[BoardCoord]]
+        self,
+        board: list[str],
+        current_path: list[BoardCoord],
+        found_paths: list[list[BoardCoord]],
     ) -> None:
         """Recursively collect valid paths starting from this trie node.
 
@@ -94,6 +99,7 @@ class Node:
             board: Current board rows.
             current_path: Path built so far, ending at this node.
             found_paths: Mutable output list for discovered valid paths.
+
         """
         if self.is_word and not leaves_small_island(board, current_path):
             found_paths.append(current_path.copy())
@@ -130,6 +136,7 @@ class Trie:
 
         Returns:
             Populated trie.
+
         """
         trie = cls()
         for word in words:
@@ -141,6 +148,7 @@ class Trie:
 
         Args:
             word: Word to insert.
+
         """
         node = self.root
 
@@ -159,6 +167,7 @@ class Trie:
 
         Returns:
             List of coordinate paths for all valid matched words.
+
         """
         found_paths: list[list[BoardCoord]] = []
 

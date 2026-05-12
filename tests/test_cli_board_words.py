@@ -1,6 +1,8 @@
 from argparse import Namespace
 from pathlib import Path
 
+import pytest
+
 import strands_solver.cli.board_words as cli
 
 
@@ -22,7 +24,7 @@ def _args(**overrides: object) -> Namespace:
     return Namespace(**values)
 
 
-def test_main_prints_all_board_words(monkeypatch, capsys) -> None:
+def test_main_prints_all_board_words(monkeypatch: pytest.MonkeyPatch, capsys: pytest.CaptureFixture[str]) -> None:
     monkeypatch.setattr(cli, "parse_args", lambda argv=None: _args())
     monkeypatch.setattr(cli, "load_allowed_words", lambda path: ["abcd"])
     monkeypatch.setattr(cli, "load_board", lambda path: ["abcd", "efgh", "ijkl", "mnop"])

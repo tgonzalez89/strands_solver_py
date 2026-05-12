@@ -20,6 +20,14 @@ requires-python = ">=3.12"
 # Keep this stub even when empty so adding first-party requirements is obvious.
 dependencies = []
 
+[project.optional-dependencies]
+device = [
+  "numpy>=2.4.4",
+  "opencv-python>=4.13.0.92",
+  "pillow>=12.2.0",
+  "tesserocr>=2.10.0",
+]
+
 [project.urls]
 Homepage = "https://github.com/tgonzalez89/strands_solver"
 Repository = "https://github.com/tgonzalez89/strands_solver"
@@ -38,7 +46,8 @@ packages = ["src/strands_solver"]
 
 # ---------------------------------------------------------------------------
 # Dependency groups (PEP 735) - preferred modern workflow for local/dev tooling.
-# These are not published as installable extras for downstream users.
+# Keep only developer tooling here; user-facing optional runtime deps belong in
+# [project.optional-dependencies].
 # ---------------------------------------------------------------------------
 [dependency-groups]
 dev = [
@@ -48,65 +57,44 @@ dev = [
   "ruff>=0.11",
   "ty>=0.0.1a8",
 ]
-device = [
-  "numpy>=2.4.4",
-  "opencv-python>=4.13.0.92",
-  "pillow>=12.2.0",
-  "tesserocr>=2.10.0",
-]
 
 # ---------------------------------------------------------------------------
 # Ruff - linting + formatting (replaces black, isort, flake8, pylint)
 # ---------------------------------------------------------------------------
 [tool.ruff]
-target-version = "py314"
+target-version = "py312"
 line-length = 120
 src = ["src"]
 
 [tool.ruff.lint]
-select = [
-  "E",    # pycodestyle errors
-  "W",    # pycodestyle warnings
-  "F",    # pyflakes
-  "I",    # isort
-  "N",    # pep8-naming
-  "UP",   # pyupgrade
-  "B",    # flake8-bugbear
-  "C4",   # flake8-comprehensions
-  "SIM",  # flake8-simplify
-  "TCH",  # flake8-type-checking (move type-only imports into TYPE_CHECKING)
-  "ANN",  # flake8-annotations (enforce type hints)
-  "PT",   # flake8-pytest-style
-  "RUF",  # Ruff-specific rules
-  "ERA",  # eradicate (detect commented-out code)
-  "PL",   # Pylint
-  "TRY",  # tryceratops
-  "PERF", # perflint
-]
+select = ["ALL"]
 ignore = [
-  "TRY003", # avoid specifying long messages outside exception class
+  "D203", # Conflicts with D211.
+  "D213", # Conflicts with D212.
+  "T201", # Allow print statements. They are used in the CLI and for debugging.
 ]
 fixable = ["ALL"]
 unfixable = []
 
 [tool.ruff.lint.per-file-ignores]
 "tests/**/*.py" = [
-  "ANN",     # tests don't need full annotation coverage
-  "PLR2004", # magic values ok in tests
-  "TC",      # type-checking import moves less important in tests
-]
-"src/strands_solver/**/*.py" = [
-  "N999", # module name uses placeholder (will be replaced via sed)
+  "ARG001",  # Allow unused arguments in functions (e.g., fixtures).
+  "ARG002",  # Allow unused arguments in methods (e.g., fixtures).
+  "ARG005",  # Allow unused arguments in class methods (e.g., fixtures).
+  "D100",    # Allow missing docstring in public modules.
+  "D101",    # Allow missing docstring in public classes.
+  "D102",    # Allow missing docstring in public methods.
+  "D103",    # Allow missing docstring in public functions.
+  "D107",    # Allow missing docstring in __init__ methods.
+  "INP001",  # Test don't need to be part of a package.
+  "PLR2004", # Magic values are often fine in tests.
+  "SLF001",  # Tests often need access to private members.
+  "S101",    # Plain assert is standard Pytest style.
 ]
 
 [tool.ruff.lint.isort]
 known-first-party = ["strands_solver"]
 
-[tool.ruff.format]
-quote-style = "double"
-indent-style = "space"
-skip-magic-trailing-comma = false
-line-ending = "auto"
 
 # ---------------------------------------------------------------------------
 # ty - type checker (Astral)
@@ -115,12 +103,7 @@ line-ending = "auto"
 root = ["src"]
 
 [tool.ty.rules]
-# Enable strictest available rules
-unknown-argument = "error"
-invalid-return-type = "error"
-missing-argument = "error"
-too-many-positional-arguments = "error"
-unresolved-import = "error"
+all = "error"
 
 # ---------------------------------------------------------------------------
 # pytest

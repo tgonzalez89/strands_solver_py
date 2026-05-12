@@ -162,7 +162,7 @@ In dark mode, unselected letters are rendered in white.
 
 Install image dependencies if needed:
 ```bash
-uv sync --group device
+uv sync --extra device
 ```
 
 Generate a dark-mode image:

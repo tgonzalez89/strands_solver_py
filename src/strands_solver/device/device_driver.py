@@ -1,5 +1,7 @@
 """Abstract device-driver interfaces."""
 
+from __future__ import annotations
+
 from abc import ABC, abstractmethod
 from typing import TYPE_CHECKING
 
@@ -16,6 +18,7 @@ class DeviceDriver(ABC):
 
         Returns:
             Encoded screenshot bytes.
+
         """
 
     @abstractmethod
@@ -24,4 +27,5 @@ class DeviceDriver(ABC):
 
         Args:
             pixel_path: Ordered pixel coordinates representing the move path.
+
         """

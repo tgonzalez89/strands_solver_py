@@ -15,6 +15,7 @@ def parse_args(argv: list[str] | None = None) -> argparse.Namespace:
 
     Returns:
         Parsed argument namespace.
+
     """
     parser = argparse.ArgumentParser(description="Render a Strands board image from board/moves fixtures.")
     parser.add_argument("--board", type=Path, required=True, help="Path to board file.")
@@ -52,6 +53,7 @@ def main(argv: list[str] | None = None) -> int:
 
     Returns:
         Process exit code.
+
     """
     args = parse_args(argv)
 

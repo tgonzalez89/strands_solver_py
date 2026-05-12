@@ -1,5 +1,7 @@
 """Base bot interface for Strands solving."""
 
+from __future__ import annotations
+
 from abc import ABC, abstractmethod
 from typing import TYPE_CHECKING
 
@@ -19,6 +21,7 @@ class Bot(ABC):
 
         Returns:
             Current board rows.
+
         """
 
     @abstractmethod
@@ -30,9 +33,10 @@ class Bot(ABC):
 
         Returns:
             True when the move is accepted as a valid match, otherwise False.
+
         """
 
-    def run(self, trie: Trie, verbose: bool = False) -> list[tuple[str, list[BoardCoord]]]:
+    def run(self, trie: Trie, *, verbose: bool = False) -> list[tuple[str, list[BoardCoord]]]:
         """Solve the current board by repeatedly trying trie paths.
 
         Args:
@@ -41,6 +45,7 @@ class Bot(ABC):
 
         Returns:
             Matched moves as `(word, coords)` tuples in execution order.
+
         """
         successful_moves: list[tuple[str, list[BoardCoord]]] = []
         board = self.get_board()

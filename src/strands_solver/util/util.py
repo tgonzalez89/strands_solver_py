@@ -1,5 +1,7 @@
 """Input/output helpers and validation utilities for solver data files."""
 
+from __future__ import annotations
+
 import ast
 from random import Random
 from string import ascii_lowercase
@@ -27,6 +29,7 @@ def load_allowed_words(allowed_words_path: Path) -> list[str]:
 
     Returns:
         Lowercased words with length greater than or equal to `MIN_WORD_LEN`.
+
     """
     result: list[str] = []
 
@@ -47,6 +50,7 @@ def load_board(board_path: Path) -> list[str]:
 
     Returns:
         Lowercased board rows with surrounding whitespace stripped.
+
     """
     with board_path.open(encoding="utf-8") as f:
         return [line.strip().lower().replace(" ", "") for line in f.readlines()]
@@ -60,34 +64,41 @@ def validate_board(board: list[str]) -> None:
 
     Raises:
         ValueError: If row width or row count is below minimum constraints.
+
     """
     len_prev_row: int | None = None
 
     if len(board) < MIN_WORD_LEN:
-        raise ValueError(f"Board has only {len(board)} rows, less than minimum ({MIN_WORD_LEN}).")
+        msg = f"Board has only {len(board)} rows, less than minimum ({MIN_WORD_LEN})."
+        raise ValueError(msg)
     if len(board) > MAX_BOARD_DIMENSION:
-        raise ValueError(f"Board has {len(board)} rows, more than maximum ({MAX_BOARD_DIMENSION}).")
+        msg = f"Board has {len(board)} rows, more than maximum ({MAX_BOARD_DIMENSION})."
+        raise ValueError(msg)
 
     for row_idx, row in enumerate(board):
         if len(row) < MIN_WORD_LEN:
+            msg = f"Row number {row_idx + 1} has length ({len(row)}) less than minimum word length ({MIN_WORD_LEN})."
             raise ValueError(
-                f"Row number {row_idx + 1} has length ({len(row)}) less than minimum word length ({MIN_WORD_LEN})."
+                msg,
             )
         if len(row) > MAX_BOARD_DIMENSION:
+            msg = f"Row number {row_idx + 1} has length ({len(row)}) greater than maximum ({MAX_BOARD_DIMENSION})."
             raise ValueError(
-                f"Row number {row_idx + 1} has length ({len(row)}) greater than maximum ({MAX_BOARD_DIMENSION})."
+                msg,
             )
         invalid_chars = sorted({char for char in row if char not in VALID_BOARD_CHARS})
         if invalid_chars:
-            raise ValueError(f"Row number {row_idx + 1} contains invalid characters: {''.join(invalid_chars)}.")
+            msg = f"Row number {row_idx + 1} contains invalid characters: {''.join(invalid_chars)}."
+            raise ValueError(msg)
 
         if len_prev_row is None:
             len_prev_row = len(row)
             continue
 
         if len(row) != len_prev_row:
+            msg = f"Row number {row_idx + 1} has length ({len(row)}) different from previous row ({len_prev_row})."
             raise ValueError(
-                f"Row number {row_idx + 1} has length ({len(row)}) different from previous row ({len_prev_row})."
+                msg,
             )
 
 
@@ -122,6 +133,7 @@ def load_moves(moves_path: Path) -> list[list[BoardCoord]]:
     Raises:
         ValueError: If a line cannot be parsed as a Python literal.
         TypeError: If parsed structures do not match expected coord-pair shape.
+
     """
     result: list[list[BoardCoord]] = []
 
@@ -134,19 +146,23 @@ def load_moves(moves_path: Path) -> list[list[BoardCoord]]:
             try:
                 raw_move = ast.literal_eval(row)
             except (SyntaxError, ValueError) as exc:
-                raise ValueError(f"Line {line_num} is not valid Python syntax for a move path.") from exc
+                msg = f"Line {line_num} is not valid Python syntax for a move path."
+                raise ValueError(msg) from exc
 
             if not isinstance(raw_move, list | tuple):
-                raise TypeError(f"Line {line_num} must be a Python list/tuple of coordinate pairs.")
+                msg = f"Line {line_num} must be a Python list/tuple of coordinate pairs."
+                raise TypeError(msg)
 
             move: list[BoardCoord] = []
             for coord in raw_move:
                 if not isinstance(coord, list | tuple) or len(coord) != COORD_PARTS_COUNT:
-                    raise TypeError(f"Line {line_num} has invalid coord {coord!r}; expected pair[int, int].")
+                    msg = f"Line {line_num} has invalid coord {coord!r}; expected pair[int, int]."
+                    raise TypeError(msg)
 
                 row_idx, col_idx = coord
                 if not isinstance(row_idx, int) or not isinstance(col_idx, int):
-                    raise TypeError(f"Line {line_num} has invalid coord {coord!r}; expected pair[int, int].")
+                    msg = f"Line {line_num} has invalid coord {coord!r}; expected pair[int, int]."
+                    raise TypeError(msg)
 
                 move.append((row_idx, col_idx))
 
@@ -164,30 +180,40 @@ def validate_move_paths(valid_moves: list[list[BoardCoord]], board: list[str]) -
 
     Raises:
         ValueError: If a path repeats coordinates or contains out-of-bounds cells.
+
     """
     for move_idx, move in enumerate(valid_moves):
         seen_coords: set[BoardCoord] = set()
         for coord in move:
             if coord in seen_coords:
-                raise ValueError(f"Move {move_idx} contains duplicate coord {coord}.")
+                msg = f"Move {move_idx} contains duplicate coord {coord}."
+                raise ValueError(msg)
             if coord[0] < 0 or coord[0] >= len(board):
-                raise ValueError(f"Move {move_idx} contains row {coord[0]} outside board bounds.")
+                msg = f"Move {move_idx} contains row {coord[0]} outside board bounds."
+                raise ValueError(msg)
             if coord[1] < 0 or coord[1] >= len(board[coord[0]]):
-                raise ValueError(f"Move {move_idx} contains col {coord[1]} outside board bounds.")
+                msg = f"Move {move_idx} contains col {coord[1]} outside board bounds."
+                raise ValueError(msg)
 
             seen_coords.add(coord)
 
 
 def generate_random_board(
-    rows: int = 8, cols: int = 6, *, include_blocked: bool = False, rng: Random | None = None
+    rows: int = 8,
+    cols: int = 6,
+    *,
+    include_blocked: bool = False,
+    rng: Random | None = None,
 ) -> list[str]:
     """Generate a random board within the supported size limits."""
     if rows < MIN_BOARD_DIMENSION or rows > MAX_BOARD_DIMENSION:
-        raise ValueError(f"rows must be between {MIN_BOARD_DIMENSION} and {MAX_BOARD_DIMENSION}")
+        msg = f"rows must be between {MIN_BOARD_DIMENSION} and {MAX_BOARD_DIMENSION}"
+        raise ValueError(msg)
     if cols < MIN_BOARD_DIMENSION or cols > MAX_BOARD_DIMENSION:
-        raise ValueError(f"cols must be between {MIN_BOARD_DIMENSION} and {MAX_BOARD_DIMENSION}")
+        msg = f"cols must be between {MIN_BOARD_DIMENSION} and {MAX_BOARD_DIMENSION}"
+        raise ValueError(msg)
 
-    generator = rng or Random()
+    generator = rng or Random()  # noqa: S311
     alphabet = ascii_lowercase + (BLOCKED_CELL if include_blocked else "")
     return ["".join(generator.choice(alphabet) for _ in range(cols)) for _ in range(rows)]
 

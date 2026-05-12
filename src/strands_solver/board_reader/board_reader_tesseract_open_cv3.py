@@ -1,29 +1,32 @@
 """OpenCV + tesserocr board reader (v2) skeleton."""
 
-import importlib
+from __future__ import annotations
+
 from typing import TYPE_CHECKING
 
 from strands_solver.board_reader.board_reader_base import BoardReaderBase
+
+try:
+    import cv2
+    import numpy as np
+
+    HAS_EXTRAS = True
+except ModuleNotFoundError:
+    HAS_EXTRAS = False
 
 if TYPE_CHECKING:
     from strands_solver.board_reader.board_reader import CellStateGrid
 
 
-class BoardReaderTesseractOpenCV2(BoardReaderBase):
-    """Board reader skeleton that will use OpenCV for vision and tesserocr for OCR.
-
-    This class intentionally provides only the shared scaffolding plus image decoding.
-    Remaining extraction hooks are left as TODOs for iterative implementation.
-    """
+class BoardReaderTesseractOpenCV3(BoardReaderBase):
+    """Board reader implementation using OpenCV for image processing and Tesseract for OCR."""
 
     def __init__(self, rows: int = 8, cols: int = 6) -> None:
-        """Initialize reader with board geometry and placeholder settings."""
+        """Initialize board reader."""
+        if not HAS_EXTRAS:
+            msg = "Extra dependencies not found."
+            raise NotImplementedError(msg)
         super().__init__(rows=rows, cols=cols)
-        self.debug_mode = False
-        self.debug_output_dir = ".debug"
-        self.save_debug_images = False
-        self.save_ocr_logs = True
-        self.current_input_name: str | None = None
 
     def _decode_image(self, screenshot: bytes) -> object:
         """Decode screenshot bytes into an OpenCV BGR image.
@@ -36,33 +39,32 @@ class BoardReaderTesseractOpenCV2(BoardReaderBase):
 
         Raises:
             ValueError: If screenshot bytes are empty or cannot be decoded.
-            NotImplementedError: If OpenCV or NumPy are unavailable.
+
         """
         if not screenshot:
-            raise ValueError("screenshot cannot be empty")
-
-        try:
-            cv2 = importlib.import_module("cv2")
-            np = importlib.import_module("numpy")
-        except ImportError as exc:
-            raise NotImplementedError("OpenCV and NumPy are required to decode screenshots") from exc
+            msg = "screenshot cannot be empty"
+            raise ValueError(msg)
 
         image_bytes = np.frombuffer(screenshot, dtype=np.uint8)
         image = cv2.imdecode(image_bytes, cv2.IMREAD_COLOR)
 
         if image is None:
-            raise ValueError("Unable to decode screenshot bytes as an image")
+            msg = "Unable to decode screenshot bytes as an image"
+            raise ValueError(msg)
 
         return image
 
     def _extract_cell_centers(self, image: object) -> list[list[tuple[int, int]]]:
         """TODO: Locate each board cell center."""
-        raise NotImplementedError("TODO: implement cell center extraction")
+        msg = "TODO: implement cell center extraction"
+        raise NotImplementedError(msg)
 
     def _extract_cell_states(self, image: object) -> CellStateGrid:
         """TODO: Infer each cell highlight state from the decoded image."""
-        raise NotImplementedError("TODO: implement cell-state extraction")
+        msg = "TODO: implement cell-state extraction"
+        raise NotImplementedError(msg)
 
     def _extract_board_rows(self, image: object) -> list[str]:
         """TODO: Extract raw OCR text for teh board."""
-        raise NotImplementedError("TODO: implement board row extraction")
+        msg = "TODO: implement board row extraction"
+        raise NotImplementedError(msg)

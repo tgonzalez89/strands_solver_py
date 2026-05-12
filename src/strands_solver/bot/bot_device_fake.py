@@ -1,5 +1,7 @@
 """Fake device-backed bot for OCR and OpenCV integration testing."""
 
+from __future__ import annotations
+
 from typing import TYPE_CHECKING
 
 from strands_solver.board_reader.board_reader_tesseract_open_cv import BoardReaderTesseractOpenCv
@@ -33,6 +35,7 @@ class BotDeviceFake(BotDevice):
             spangram_indexes: Move indexes classified as spangram.
             mode: Render mode for generated screenshots.
             render_config: Optional rendering configuration.
+
         """
         self._device_driver_fake = DeviceDriverFake(
             board=board,
@@ -68,17 +71,19 @@ class BotDeviceFake(BotDevice):
                 continue
 
             for col_idx, (expected_char, observed_char) in enumerate(
-                zip(expected_row, observed_row, strict=True), start=1
+                zip(expected_row, observed_row, strict=True),
+                start=1,
             ):
                 if expected_char != observed_char:
                     mismatch_count += 1
                     mismatch_preview.append(
-                        f"(r{row_idx},c{col_idx}): expected '{expected_char}' got '{observed_char}'"
+                        f"(r{row_idx},c{col_idx}): expected '{expected_char}' got '{observed_char}'",
                     )
 
         details = ", ".join(mismatch_preview) if mismatch_preview else "row-level mismatch"
+        msg = f"Initial OCR board does not match configured fake board ({mismatch_count} mismatched cells). {details}"
         raise InitialOcrMismatchError(
-            f"Initial OCR board does not match configured fake board ({mismatch_count} mismatched cells). {details}"
+            msg,
         )
 
 

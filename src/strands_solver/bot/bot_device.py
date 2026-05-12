@@ -1,5 +1,7 @@
 """Device-backed bot implementation."""
 
+from __future__ import annotations
+
 from typing import TYPE_CHECKING
 
 from strands_solver.board_reader.board_reader import BoardReader, BoardState, Highlight
@@ -20,6 +22,7 @@ class BotDevice(Bot):
         Args:
             driver: Device interaction implementation.
             reader: Screenshot parser and feedback classifier.
+
         """
         self._driver = driver
         self._reader = reader
@@ -33,6 +36,7 @@ class BotDevice(Bot):
 
         Raises:
             ValueError: If extracted board violates board validation rules.
+
         """
         screenshot = self._driver.capture_screen()
         state = self._reader.extract_state(screenshot)
@@ -45,6 +49,7 @@ class BotDevice(Bot):
 
         Returns:
             Current board rows.
+
         """
         state = self._state if self._state is not None else self.refresh_state()
         return self._solver_board_from_state(state)
@@ -73,6 +78,7 @@ class BotDevice(Bot):
 
         Returns:
             True if move execution is verified; otherwise False.
+
         """
         before_state = self._state if self._state is not None else self.refresh_state()
         pixel_path = self._reader.board_move_to_pixel_path(move)

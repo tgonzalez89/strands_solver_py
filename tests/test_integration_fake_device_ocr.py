@@ -30,7 +30,7 @@ def _ensure_tesserocr_ready() -> None:
 
         with tesserocr.PyTessBaseAPI(psm=tesserocr.PSM.SINGLE_CHAR, lang="eng"):
             pass
-    except Exception as error:  # pragma: no cover - environment dependent
+    except Exception as error:  # pragma: no cover - environment dependent  # noqa: BLE001
         pytest.skip(f"tesserocr runtime unavailable for integration tests: {error}")
 
 

@@ -1,5 +1,7 @@
 """In-memory bot implementation for fixtures and local tests."""
 
+from __future__ import annotations
+
 from pathlib import Path
 from typing import TYPE_CHECKING
 
@@ -14,6 +16,13 @@ class BotFake(Bot):
     """In-memory game adapter used for local testing and fixtures."""
 
     def __init__(self, board: list[str] | Path, valid_moves: list[list[BoardCoord]] | Path) -> None:
+        """Initialize the fake bot from in-memory data or fixture paths.
+
+        Args:
+            board: Board rows or path to a board fixture.
+            valid_moves: Valid move paths or path to a moves fixture.
+
+        """
         loaded_board = load_board(board) if isinstance(board, Path) else board.copy()
         loaded_valid_moves = (
             load_moves(valid_moves) if isinstance(valid_moves, Path) else [move.copy() for move in valid_moves]

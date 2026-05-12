@@ -1,5 +1,7 @@
 """Appium-backed device driver implementation."""
 
+from __future__ import annotations
+
 from itertools import pairwise
 from typing import TYPE_CHECKING, Protocol
 
@@ -17,6 +19,7 @@ class AppiumSession(Protocol):
 
         Returns:
             PNG-encoded screenshot bytes.
+
         """
 
     def swipe(self, start_x: int, start_y: int, end_x: int, end_y: int, duration: int) -> None:
@@ -28,6 +31,7 @@ class AppiumSession(Protocol):
             end_x: End x-coordinate in pixels.
             end_y: End y-coordinate in pixels.
             duration: Swipe duration in milliseconds.
+
         """
 
 
@@ -40,6 +44,7 @@ class DeviceDriverAppium(DeviceDriver):
         Args:
             session: Optional active Appium session.
             swipe_duration_ms: Duration to use for each swipe call.
+
         """
         self._session = session
         self._swipe_duration_ms = swipe_duration_ms
@@ -49,6 +54,7 @@ class DeviceDriverAppium(DeviceDriver):
 
         Args:
             session: Initialized Appium session.
+
         """
         self._session = session
 
@@ -60,9 +66,11 @@ class DeviceDriverAppium(DeviceDriver):
 
         Raises:
             NotImplementedError: If no session has been attached yet.
+
         """
         if self._session is None:
-            raise NotImplementedError("Appium session is not configured yet")
+            msg = "Appium session is not configured yet"
+            raise NotImplementedError(msg)
         return self._session
 
     def capture_screen(self) -> bytes:
@@ -73,12 +81,14 @@ class DeviceDriverAppium(DeviceDriver):
 
         Raises:
             NotImplementedError: If the screenshot payload is empty.
+
         """
         session = self._get_session()
         screenshot_bytes = session.get_screenshot_as_png()
         if screenshot_bytes:
             return screenshot_bytes
-        raise NotImplementedError("Appium returned an empty screenshot")
+        msg = "Appium returned an empty screenshot"
+        raise NotImplementedError(msg)
 
     def execute_path(self, pixel_path: list[PixelCoord]) -> None:
         """Execute a board path as one or more Appium swipes.
@@ -88,9 +98,11 @@ class DeviceDriverAppium(DeviceDriver):
 
         Raises:
             ValueError: If `pixel_path` is empty.
+
         """
         if not pixel_path:
-            raise ValueError("pixel_path must contain at least one coordinate")
+            msg = "pixel_path must contain at least one coordinate"
+            raise ValueError(msg)
 
         session = self._get_session()
         if len(pixel_path) == 1:

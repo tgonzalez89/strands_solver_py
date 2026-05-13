@@ -10,7 +10,6 @@ __pycache__/
 dist/
 build/
 .eggs/
-wheels/
 pip-wheel-metadata/
 share/python-wheels/
 
@@ -18,7 +17,7 @@ share/python-wheels/
 # uv
 # ---------------------------------------------------------------------------
 .venv/
-# uv.lock is intentionally COMMITTED - do not add it here
+# uv.lock is intentionally COMMITTED to ensure consistent dependencies across environments.
 
 # ---------------------------------------------------------------------------
 # Testing & coverage

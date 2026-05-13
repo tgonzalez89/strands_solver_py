@@ -48,6 +48,14 @@ strands_words = "strands_solver.cli.board_words:main"
 packages = ["src/strands_solver"]
 
 # ---------------------------------------------------------------------------
+# uv - local wheel directory for packages that have no PyPI build for Windows
+# (e.g. tesserocr). Developers place the matching .whl file in wheels/ and uv
+# resolves it from there. The directory is git-ignored; see README for links.
+# ---------------------------------------------------------------------------
+[tool.uv]
+find-links = ["./"]
+
+# ---------------------------------------------------------------------------
 # Dependency groups (PEP 735) - preferred modern workflow for local/dev tooling.
 # Keep only developer tooling here; user-facing optional runtime deps belong in
 # [project.optional-dependencies].

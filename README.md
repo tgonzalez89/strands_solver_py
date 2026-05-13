@@ -30,6 +30,38 @@ A Python tool for solving Strands word puzzle games. Given a board grid and allo
    uv run python --version
    ```
 
+### Optional Dependencies (Device Features)
+
+The `device` extras group (`appium-python-client`, `opencv-python`, `pillow`, `tesserocr`, …) is required for the ADB and Appium CLI commands that read the board from a real device screen. Install it with:
+
+```bash
+uv sync --all-extras
+```
+
+#### tesserocr on Windows
+
+`tesserocr` has no official Windows wheel on PyPI. Before running `uv sync --all-extras` you must provide the wheel manually:
+
+1. **Install Tesseract-OCR** on your machine.
+   Follow the instructions on the [tesserocr PyPI page](https://pypi.org/project/tesserocr/).
+
+2. **Download the matching wheel** for your Python version and architecture from:
+   [https://github.com/simonflueckiger/tesserocr-windows_build/releases](https://github.com/simonflueckiger/tesserocr-windows_build/releases)
+
+   Pick the file that matches your setup, e.g.:
+   `tesserocr-2.10.0-cp314-cp314-win_amd64.whl` for Python 3.14 on 64-bit Windows.
+
+3. **Place the wheel** in the `wheels/` directory at the repository root:
+   ```
+   strands_solver_py/
+   └── wheels/
+       └── tesserocr-2.10.0-cp314-cp314-win_amd64.whl
+   ```
+
+4. **Run `uv sync --all-extras`** — `uv` will pick up the wheel automatically from that directory.
+
+> **Note:** The `wheels/` directory is git-ignored for `.whl` files, so wheels are never committed to the repository. Each developer must add their platform's wheel locally.
+
 ### Running Tests
 
 Run the full test suite without coverage gate:

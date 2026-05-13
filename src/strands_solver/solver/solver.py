@@ -80,6 +80,46 @@ def leaves_small_island(board: list[str], removed_path: list[BoardCoord]) -> boo
     return False
 
 
+def _orientation(a: BoardCoord, b: BoardCoord, c: BoardCoord) -> int:
+    """Return orientation sign for ordered triplet `(a, b, c)`.
+
+    Positive/negative values indicate clockwise/counter-clockwise, and zero
+    indicates collinearity.
+
+    """
+    ax, ay = a[1], a[0]
+    bx, by = b[1], b[0]
+    cx, cy = c[1], c[0]
+    return (bx - ax) * (cy - ay) - (by - ay) * (cx - ax)
+
+
+def _segments_intersect(a1: BoardCoord, a2: BoardCoord, b1: BoardCoord, b2: BoardCoord) -> bool:
+    """Return whether two closed line segments intersect."""
+    o1 = _orientation(a1, a2, b1)
+    o2 = _orientation(a1, a2, b2)
+    o3 = _orientation(b1, b2, a1)
+    o4 = _orientation(b1, b2, a2)
+
+    return (o1 > 0 > o2 or o1 < 0 < o2) and (o3 > 0 > o4 or o3 < 0 < o4)
+
+
+def path_would_self_cross(path: list[BoardCoord], next_coord: BoardCoord) -> bool:
+    """Check whether extending `path` to `next_coord` would self-intersect."""
+    if len(path) < 3:  # noqa: PLR2004
+        return False
+
+    new_start = path[-1]
+    new_end = next_coord
+
+    for idx in range(len(path) - 2):
+        seg_start = path[idx]
+        seg_end = path[idx + 1]
+        if _segments_intersect(seg_start, seg_end, new_start, new_end):
+            return True
+
+    return False
+
+
 @dataclass
 class Node:
     """Trie node containing children and terminal-word metadata."""
@@ -108,6 +148,8 @@ class Node:
         for next_row, next_col in get_neighbor_coords(board, row, col):
             next_coord = (next_row, next_col)
             if next_coord in current_path:
+                continue
+            if path_would_self_cross(current_path, next_coord):
                 continue
 
             next_char = board[next_row][next_col]

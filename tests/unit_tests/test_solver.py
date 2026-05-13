@@ -57,6 +57,18 @@ def test_trie_finds_diagonal_word_path() -> None:
     assert [(0, 0), (1, 1), (2, 2), (3, 3)] in paths
 
 
+def test_trie_discards_self_crossing_path() -> None:
+    board = [
+        "abcd",
+        "efgh",
+    ]
+    trie = Trie.build_from_words(["afeb"])
+
+    paths = trie.find_all_word_paths(board)
+
+    assert [(0, 0), (1, 1), (1, 0), (0, 1)] not in paths
+
+
 def test_trie_returns_empty_when_no_words_match() -> None:
     board = [
         "test",

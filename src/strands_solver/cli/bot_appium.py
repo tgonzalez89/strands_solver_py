@@ -33,6 +33,11 @@ def parse_args(argv: list[str] | None = None) -> argparse.Namespace:
         default="",
         help="Android activity that shows the Strands board (e.g. .games.strands.StrandsActivity).",
     )
+    parser.add_argument(
+        "--tessdata-dir",
+        default="",
+        help="Tesseract tessdata directory. Defaults to TESSDATA_PREFIX env var or built-in path.",
+    )
     return parser.parse_args(argv)
 
 
@@ -89,7 +94,10 @@ def main(argv: list[str] | None = None) -> int:
         return 2
 
     driver.attach_session(session)
-    bot = BotDevice(driver=driver, reader=BoardReaderTesseractOpenCV())
+    bot = BotDevice(
+        driver=driver,
+        reader=BoardReaderTesseractOpenCV(tessdata_dir=args.tessdata_dir or None),
+    )
     try:
         successful_moves = bot.run(trie, verbose=args.verbose)
     except NotImplementedError as error:

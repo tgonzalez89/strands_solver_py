@@ -16,7 +16,7 @@ if TYPE_CHECKING:
 class BotDeviceFake(BotDevice):
     """Device bot backed by generated screenshots and real OCR reader."""
 
-    def __init__(
+    def __init__(  # noqa: PLR0913
         self,
         board: list[str] | Path,
         valid_moves: list[list[BoardCoord]] | Path,
@@ -24,6 +24,7 @@ class BotDeviceFake(BotDevice):
         spangram_indexes: set[int] | None = None,
         mode: str = "light",
         render_config: RenderConfig | None = None,
+        tessdata_dir: str | None = None,
     ) -> None:
         """Initialize a fake-device bot for OCR integration testing.
 
@@ -33,6 +34,7 @@ class BotDeviceFake(BotDevice):
             spangram_indexes: Move indexes classified as spangram.
             mode: Render mode for generated screenshots.
             render_config: Optional rendering configuration.
+            tessdata_dir: Optional tessdata directory for Tesseract OCR.
 
         """
         self._device_driver_fake = DeviceDriverFake(
@@ -45,7 +47,11 @@ class BotDeviceFake(BotDevice):
         initial_board = self._device_driver_fake.initial_board
         super().__init__(
             driver=self._device_driver_fake,
-            reader=BoardReaderTesseractOpenCV(rows=len(initial_board), cols=len(initial_board[0])),
+            reader=BoardReaderTesseractOpenCV(
+                rows=len(initial_board),
+                cols=len(initial_board[0]),
+                tessdata_dir=tessdata_dir,
+            ),
         )
         self._validate_initial_ocr_matches_expected_board()
 

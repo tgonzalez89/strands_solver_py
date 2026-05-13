@@ -1,5 +1,6 @@
 """OpenCV + tesserocr board reader implementation."""
 
+import os
 from typing import TYPE_CHECKING, Final, cast
 
 from strands_solver.board_reader.board_reader import Highlight
@@ -40,7 +41,13 @@ PALETTE: Final[dict[tuple[int, int, int], Highlight]] = {
     SELECTION_COLOR: Highlight.NONE,
 }
 
-TESSDATA_DIR = "/usr/share/tesseract-ocr/5/tessdata"  # TODO: Make this configurable or automatically detected.
+# Default Tesseract data directory, depending on the OS.
+if os.name == "nt":  # Windows
+    TESSDATA_DIR = rf"C:\Users\{os.getlogin()}\AppData\Local\Programs\Tesseract-OCR\tessdata"
+elif os.name == "posix":
+    TESSDATA_DIR = "/usr/share/tesseract-ocr/5/tessdata"
+else:
+    TESSDATA_DIR = "/usr/share/tesseract-ocr/5/tessdata"
 TESSEDIT_CHAR_WHITELIST = "ABCDEFGHIJKLMNOPQRSTUVWXYZ| "
 TESSEDIT_CHAR_BLACKLIST = "`~!@#$%^&*()-_=+[{]}\\;:'\",<.>/?]"
 
@@ -48,8 +55,17 @@ TESSEDIT_CHAR_BLACKLIST = "`~!@#$%^&*()-_=+[{]}\\;:'\",<.>/?]"
 class BoardReaderTesseractOpenCV(BoardReaderBase):
     """Board reader implementation using OpenCV for image processing and Tesseract OCR."""
 
-    def __init__(self, rows: int = 8, cols: int = 6) -> None:
-        """Initialize board reader."""
+    def __init__(self, rows: int = 8, cols: int = 6, tessdata_dir: str | None = None) -> None:
+        """Initialize board reader.
+
+        Args:
+            rows: Number of board rows.
+            cols: Number of board columns.
+            tessdata_dir: Optional path to Tesseract tessdata directory.
+                If not provided, uses `TESSDATA_PREFIX` environment variable when set,
+                otherwise falls back to `TESSDATA_DIR`.
+
+        """
         if not HAS_EXTRAS:
             msg = "Extra dependencies not found."
             raise NotImplementedError(msg)
@@ -63,6 +79,7 @@ class BoardReaderTesseractOpenCV(BoardReaderBase):
             TOP_LEFT_CELL_CENTER[0] - self._cell_width // 2,
             TOP_LEFT_CELL_CENTER[1] - self._cell_height // 2,
         )
+        self._tessdata_dir = tessdata_dir or os.environ.get("TESSDATA_PREFIX", TESSDATA_DIR)
 
     def _decode_image(self, screenshot: bytes) -> object:
         """Decode screenshot bytes into an OpenCV BGR image.
@@ -181,7 +198,7 @@ class BoardReaderTesseractOpenCV(BoardReaderBase):
         }
 
         board: list[str] = ["?" * self._cols for _ in range(self._rows)]
-        result = self._ocr_cell_by_cell(board, board_img, TESSDATA_DIR, variables)
+        result = self._ocr_cell_by_cell(board, board_img, self._tessdata_dir, variables)
         # Try again with whitelist.
         if not result:
             print("WARNING: OCR failed with initial configuration, retrying with character whitelist.")
@@ -189,7 +206,7 @@ class BoardReaderTesseractOpenCV(BoardReaderBase):
             result = self._ocr_cell_by_cell(
                 board,
                 board_img,
-                TESSDATA_DIR,
+                self._tessdata_dir,
                 variables | {"tessedit_char_whitelist": TESSEDIT_CHAR_WHITELIST},
             )
         if not result:

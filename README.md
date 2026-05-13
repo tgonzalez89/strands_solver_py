@@ -117,6 +117,7 @@ Required options:
 Optional fake options:
 - `--spangram-index N` - 0-based spangram move index (repeatable)
 - `--fake-mode {light,dark}` - Render mode for fake screenshots
+- `--tessdata-dir PATH` - Tesseract tessdata directory
 
 Example:
 ```bash
@@ -138,6 +139,7 @@ Optional Appium options:
 - `--device-name SERIAL` - ADB device serial
 - `--app-package PACKAGE` - Android package name
 - `--app-activity ACTIVITY` - Android activity showing the board
+- `--tessdata-dir PATH` - Tesseract tessdata directory
 
 Example:
 ```bash
@@ -156,6 +158,7 @@ Optional ADB options:
 - `--device-serial SERIAL` - ADB device serial
 - `--swipe-duration-ms N` - Swipe duration per segment in milliseconds
 - `--adb-timeout-s N` - Timeout in seconds per ADB command
+- `--tessdata-dir PATH` - Tesseract tessdata directory
 
 Example:
 ```bash

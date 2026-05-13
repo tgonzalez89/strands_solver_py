@@ -29,6 +29,11 @@ def parse_args(argv: list[str] | None = None) -> argparse.Namespace:
         default="light",
         help="Rendered board mode for fake screenshots.",
     )
+    parser.add_argument(
+        "--tessdata-dir",
+        default="",
+        help="Tesseract tessdata directory. Defaults to TESSDATA_PREFIX env var or built-in path.",
+    )
     parser.add_argument("--verbose", "-v", action="store_true", help="Enable verbose logging.")
     return parser.parse_args(argv)
 
@@ -52,6 +57,7 @@ def main(argv: list[str] | None = None) -> int:
             spangram_indexes={index for index in args.spangram_index if index >= 0},
             mode=args.fake_mode,
             render_config=RenderConfig(),
+            tessdata_dir=args.tessdata_dir or None,
         )
     except InitialOcrMismatchError as error:
         print(f"fake_mode_ocr_mismatch: {error}", file=sys.stderr)

@@ -22,6 +22,11 @@ def parse_args(argv: list[str] | None = None) -> argparse.Namespace:
     parser.add_argument("--device-serial", default="", help="ADB device serial (from `adb devices`).")
     parser.add_argument("--swipe-duration-ms", type=int, default=120, help="Duration in ms for each swipe segment.")
     parser.add_argument("--adb-timeout-s", type=float, default=15.0, help="Timeout in seconds per adb command.")
+    parser.add_argument(
+        "--tessdata-dir",
+        default="",
+        help="Tesseract tessdata directory. Defaults to TESSDATA_PREFIX env var or built-in path.",
+    )
     return parser.parse_args(argv)
 
 
@@ -45,7 +50,10 @@ def main(argv: list[str] | None = None) -> int:
         swipe_duration_ms=args.swipe_duration_ms,
         command_timeout_s=args.adb_timeout_s,
     )
-    bot = BotDevice(driver=driver, reader=BoardReaderTesseractOpenCV())
+    bot = BotDevice(
+        driver=driver,
+        reader=BoardReaderTesseractOpenCV(tessdata_dir=args.tessdata_dir or None),
+    )
     try:
         successful_moves = bot.run(trie, verbose=args.verbose)
     except NotImplementedError as error:

@@ -117,3 +117,28 @@ def test_leaves_small_island_returns_false_when_islands_big_enough() -> None:
     removed_path = [(0, 0), (0, 1), (0, 2), (0, 3)]
 
     assert leaves_small_island(board, removed_path) is False
+
+
+def test_leaves_small_island_treats_diagonal_chain_as_connected() -> None:
+    board = [
+        "abcd",
+        "efgh",
+        "ijkl",
+        "mnop",
+    ]
+    removed_path = [
+        (0, 1),
+        (0, 2),
+        (0, 3),
+        (1, 0),
+        (1, 2),
+        (1, 3),
+        (2, 0),
+        (2, 1),
+        (2, 3),
+        (3, 0),
+        (3, 1),
+        (3, 2),
+    ]
+
+    assert leaves_small_island(board, removed_path) is False

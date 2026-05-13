@@ -22,6 +22,7 @@ dependencies = []
 
 [project.optional-dependencies]
 device = [
+  "appium-python-client>=4.5.0",
   "numpy>=2.4.4",
   "opencv-python>=4.13.0.92",
   "pillow>=12.2.0",
@@ -34,9 +35,11 @@ Repository = "https://github.com/tgonzalez89/strands_solver"
 Issues = "https://github.com/tgonzalez89/strands_solver/issues"
 
 [project.scripts]
-strands_solver = "strands_solver.cli.bot:main"
+strands_solver_file = "strands_solver.cli.bot_file:main"
+strands_solver_adb = "strands_solver.cli.bot_adb:main"
+strands_solver_appium = "strands_solver.cli.bot_appium:main"
+strands_solver_fake = "strands_solver.cli.bot_fake:main"
 strands_words = "strands_solver.cli.board_words:main"
-strands_board_image = "strands_solver.cli.board_image:main"
 
 # ---------------------------------------------------------------------------
 # Hatch build config (src layout)
@@ -81,6 +84,9 @@ fixable = ["ALL"]
 unfixable = []
 
 [tool.ruff.lint.per-file-ignores]
+"src/strands_solver/device/device_driver_adb.py" = [
+  "S603", # ADB command execution is intentional in this trusted device-driver adapter.
+]
 "tests/**/*.py" = [
   "ARG001",  # Allow unused arguments in functions (e.g., fixtures).
   "ARG002",  # Allow unused arguments in methods (e.g., fixtures).

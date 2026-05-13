@@ -88,44 +88,194 @@ The extraction tool writes OCR/cell-state logs and per-image debug boards under 
 
 ### Running the CLI Application
 
-The CLI now selects mode with `--driver`:
+The bot CLI is split into focused commands:
 
-- **File mode** (`--driver file`): reads board/moves from files
-- **Appium mode** (`--driver appium`): runs real device flow
-- **Fake mode** (`--driver fake`): runs OCR against generated screenshots
+- **File CLI**: `strands_solver`
+- **Fake-device CLI**: `strands_solver_fake`
+- **ADB-device CLI**: `strands_solver_adb`
+- **Appium-device CLI**: `strands_solver_appium`
 
-For file mode, there are two sub-modes:
+#### File CLI (`strands_solver`)
 
-- **Discovery mode** (no moves file): prints all possible words found on the board
-- **Verification mode** (with moves file): applies expected moves and prints `matched=X/Y`
+Required options:
+- `-w, --allowed-words FILE` - Path to allowed words file
+- `-b, --board FILE` - Board file
+- `-m, --valid-moves FILE` - Valid moves file
 
-**Options:**
-- `-w, --allowed-words FILE` - Path to allowed words file (one word per line)
-- `--driver {file,appium,fake}` - Backend mode
-- `-b, --board FILE` - Board file (required for `file` and `fake` driver)
-- `-m, --valid-moves FILE` - Optional valid moves file (file mode only)
-- `--spangram-index N` - 0-based spangram move index (repeatable, fake mode)
-- `--fake-mode {light,dark}` - Render mode for fake screenshots (fake mode)
-
-**File mode discovery:**
+Example:
 ```bash
-uv run strands_solver --driver file -w <words_file> -b <board_file>
+uv run strands_solver -w <words_file> -b <board_file> -m <moves_file>
 ```
 
-**File mode verification:**
+#### Fake-device CLI (`strands_solver_fake`)
+
+Required options:
+- `-w, --allowed-words FILE` - Path to allowed words file
+- `-b, --board FILE` - Board file
+- `-m, --valid-moves FILE` - Valid moves file
+
+Optional fake options:
+- `--spangram-index N` - 0-based spangram move index (repeatable)
+- `--fake-mode {light,dark}` - Render mode for fake screenshots
+
+Example:
 ```bash
-uv run strands_solver --driver file -w <words_file> -b <board_file> -m <moves_file>
+uv run strands_solver_fake \
+   -w <words_file> \
+   -b <board_file> \
+   -m <moves_file> \
+   --spangram-index 0 \
+   --fake-mode light
 ```
 
-**Appium mode:**
+#### Appium-device CLI (`strands_solver_appium`)
+
+Required options:
+- `-w, --allowed-words FILE` - Path to allowed words file
+
+Optional Appium options:
+- `--appium-url URL` - Appium server URL
+- `--device-name SERIAL` - ADB device serial
+- `--app-package PACKAGE` - Android package name
+- `--app-activity ACTIVITY` - Android activity showing the board
+
+Example:
 ```bash
-uv run strands_solver --driver appium -w <words_file>
+uv run strands_solver_appium -w <words_file>
 ```
+
+#### ADB-device CLI (`strands_solver_adb`)
+
+Required options:
+- `-w, --allowed-words FILE` - Path to allowed words file
+
+Optional ADB options:
+- `--adb-path PATH` - ADB executable path/command (default: `adb`)
+- `--adb-host HOST` - ADB server host (passed as `adb -H`)
+- `--adb-port PORT` - ADB server port (passed as `adb -P`)
+- `--device-serial SERIAL` - ADB device serial
+- `--swipe-duration-ms N` - Swipe duration per segment in milliseconds
+- `--adb-timeout-s N` - Timeout in seconds per ADB command
+
+Example:
+```bash
+TESSDATA_PREFIX=/usr/share/tesseract-ocr/5/tessdata \
+uv run strands_solver_adb \
+   -w data/allowed_words.txt \
+   --device-serial RF8M12345AB \
+   --verbose
+```
+
+WSL example (use Windows host adb server):
+```bash
+TESSDATA_PREFIX=/usr/share/tesseract-ocr/5/tessdata \
+uv run strands_solver_adb \
+   -w data/allowed_words.txt \
+   --adb-host host.docker.internal \
+   --adb-port 5037 \
+   --device-serial RF8M12345AB \
+   --verbose
+```
+
+---
+
+### Running on a Real Android Device
+
+This section covers everything needed to control a physical Android phone via USB using `strands_solver_appium`.
+
+#### Prerequisites
+
+- An **Android phone** with a USB cable
+- **Android Debug Bridge (ADB)** installed on your PC:
+  ```bash
+  # Debian/Ubuntu
+  sudo apt install adb
+  ```
+- **Node.js 18+** for the Appium server:
+  ```bash
+  # Debian/Ubuntu (via NodeSource)
+  curl -fsSL https://deb.nodesource.com/setup_20.x | sudo -E bash -
+  sudo apt install -y nodejs
+  ```
+- The `device` extras of this package installed:
+  ```bash
+  uv sync --extra device
+  ```
+
+#### Step 1 – Enable USB Debugging on the phone
+
+1. Open **Settings → About phone** and tap **Build number** seven times to unlock Developer Options.
+2. Go to **Settings → Developer options** and enable **USB debugging**.
+3. Plug the phone into the PC. Accept the "Allow USB debugging?" prompt on the phone.
+4. Verify the connection:
+   ```bash
+   adb devices
+   ```
+   You should see one entry like `RF8M12345AB  device`. Note the serial — you'll use it as `--device-name`.
+
+#### Step 2 – Install and start the Appium server
+
+```bash
+npm install -g appium
+appium driver install uiautomator2
+appium                              # listens on http://localhost:4723 by default
+```
+
+Leave this running in a separate terminal.
+
+#### Step 3 – Find the NYT app's package name and activity
+
+Open the NYT Games / Strands app on the phone (navigate to the Strands board screen), then run:
+
+```bash
+adb shell dumpsys window windows | grep -E 'mCurrentFocus|mFocusedApp'
+```
+
+The output will look something like:
+
+```
+mCurrentFocus=Window{... com.nytimes.android/com.nytimes.games.strands.StrandsActivity}
+```
+
+This gives you both values:
+- `--app-package com.nytimes.android`
+- `--app-activity com.nytimes.games.strands.StrandsActivity`
+
+#### Step 4 – Run the bot
+
+Combine everything into one command. Make sure the Strands puzzle board is visible on the phone before running.
+
+```bash
+TESSDATA_PREFIX=/usr/share/tesseract-ocr/5/tessdata \
+uv run strands_solver_appium \
+  -w data/allowed_words.txt \
+  --device-name RF8M12345AB \
+  --app-package com.nytimes.android \
+  --app-activity com.nytimes.games.strands.StrandsActivity \
+  --verbose
+```
+
+**Optional flags:**
+
+| Flag | Default | Description |
+|---|---|---|
+| `--appium-url` | `http://localhost:4723` | Appium server URL |
+| `--device-name` | *(auto-detected)* | ADB device serial from `adb devices` |
+| `--app-package` | `com.nytimes.android` | Android package name |
+| `--app-activity` | *(required)* | Android activity showing the board |
+
+#### Troubleshooting
+
+- **`adb devices` shows `unauthorized`** — unlock the phone and accept the USB debugging prompt.
+- **Appium session fails to start** — confirm `uiautomator2` driver is installed (`appium driver list --installed`) and the phone is detected by ADB.
+- **OCR reads the wrong letters** — the board must be fully visible with no dialogs or overlays. The `--verbose` flag prints each extracted board state for inspection.
+- **`TESSDATA_PREFIX` errors** — see the [Tesseract data path](#tesseract-data-path-tessdata_prefix) section above.
+
+---
 
 **Fake OCR-test mode:**
 ```bash
-uv run strands_solver \
-   --driver fake \
+uv run strands_solver_fake \
    -w <words_file> \
    -b <board_file> \
    -m <moves_file> \
@@ -135,7 +285,7 @@ uv run strands_solver \
 
 ### Tesseract data path (TESSDATA_PREFIX)
 
-OCR-backed flows (`--driver fake` and `--driver appium`) require Tesseract language data.
+OCR-backed flows (`strands_solver_fake`, `strands_solver_adb`, and `strands_solver_appium`) require Tesseract language data.
 If you see errors like `Failed to init API` or invalid tessdata path, set `TESSDATA_PREFIX` to the folder that contains `eng.traineddata`.
 
 Common Linux paths:
@@ -151,8 +301,7 @@ ls "$TESSDATA_PREFIX"/eng.traineddata
 Run fake mode with explicit tessdata path:
 ```bash
 TESSDATA_PREFIX=/usr/share/tesseract-ocr/5/tessdata \
-uv run strands_solver \
-   --driver fake \
+uv run strands_solver_fake \
    -w data/allowed_words.txt \
    -b data/example1/board.txt \
    -m data/example1/valid_moves.txt \
@@ -163,8 +312,7 @@ uv run strands_solver \
 Example with verbose output:
 ```bash
 TESSDATA_PREFIX=/usr/share/tesseract-ocr/5/tessdata \
-uv run strands_solver \
-   --driver fake \
+uv run strands_solver_fake \
    --allowed-words data/allowed_words.txt \
    --board data/example1/board.txt \
    --valid-moves data/example1/valid_moves.txt \
@@ -173,7 +321,7 @@ uv run strands_solver \
    --verbose
 ```
 
-Note: appium mode requires a configured Appium session; otherwise the CLI reports `device_mode_not_ready`.
+Note: appium mode requires Appium server running locally and a real Android device connected via USB. ADB mode requires `adb` installed and a real Android device connected via USB.
 
 ### Generating Board State Images
 

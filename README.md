@@ -58,7 +58,9 @@ uv sync --all-extras
        └── tesserocr-2.10.0-cp314-cp314-win_amd64.whl
    ```
 
-4. **Run `uv sync --all-extras`** — `uv` will pick up the wheel automatically from that directory.
+4. **Uncomment** the [tool.uv] and [tool.uv.sources] sections in the pyproject.toml
+
+5. **Run `uv sync --all-extras`** — `uv` will pick up the wheel automatically from that directory.
 
 > **Note:** The `wheels/` directory is git-ignored for `.whl` files, so wheels are never committed to the repository. Each developer must add their platform's wheel locally.
 

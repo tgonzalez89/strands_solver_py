@@ -52,8 +52,13 @@ packages = ["src/strands_solver"]
 # (e.g. tesserocr). Developers place the matching .whl file in wheels/ and uv
 # resolves it from there. The directory is git-ignored; see README for links.
 # ---------------------------------------------------------------------------
-[tool.uv]
-find-links = ["./"]
+# Enable in Windows.
+# ---------------------------------------------------------------------------
+# [tool.uv]
+# find-links = ["./wheels"]
+
+# [tool.uv.sources]
+# tesserocr = { path = "wheels/tesserocr-2.10.0-cp314-cp314-win_amd64.whl" }
 
 # ---------------------------------------------------------------------------
 # Dependency groups (PEP 735) - preferred modern workflow for local/dev tooling.

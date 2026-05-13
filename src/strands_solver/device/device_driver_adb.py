@@ -90,7 +90,7 @@ class DeviceDriverADB(DeviceDriver):
             msg = "ADB returned an empty screenshot"
             raise NotImplementedError(msg)
 
-        return screenshot_bytes.replace(b"\r\n", b"\n")
+        return screenshot_bytes
 
     def execute_path(self, pixel_path: list[PixelCoord]) -> None:
         """Execute a board path as one or more ADB swipe gestures.

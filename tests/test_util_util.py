@@ -1,5 +1,5 @@
-from pathlib import Path
 from random import Random
+from typing import TYPE_CHECKING
 
 import pytest
 
@@ -15,6 +15,9 @@ from strands_solver.util.util import (
     validate_board,
     validate_move_paths,
 )
+
+if TYPE_CHECKING:
+    from pathlib import Path
 
 
 def test_load_allowed_words_filters_by_min_length(tmp_path: Path) -> None:
@@ -256,7 +259,7 @@ def test_coords_to_word_returns_empty_for_empty_path() -> None:
 
 
 def test_generate_random_board_returns_requested_shape() -> None:
-    board = generate_random_board(rows=4, cols=5, rng=Random(0))  # noqa: S311
+    board = generate_random_board(rows=4, cols=5, rng=Random(0))
 
     assert len(board) == 4
     assert all(len(row) == 5 for row in board)
@@ -264,7 +267,7 @@ def test_generate_random_board_returns_requested_shape() -> None:
 
 
 def test_generate_random_board_can_include_blocked_cells() -> None:
-    board = generate_random_board(rows=4, cols=4, include_blocked=True, rng=Random(1))  # noqa: S311
+    board = generate_random_board(rows=4, cols=4, include_blocked=True, rng=Random(1))
 
     assert len(board) == 4
     assert all(len(row) == 4 for row in board)

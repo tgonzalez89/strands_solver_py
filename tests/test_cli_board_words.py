@@ -1,9 +1,11 @@
 from argparse import Namespace
 from pathlib import Path
-
-import pytest
+from typing import TYPE_CHECKING
 
 import strands_solver.cli.board_words as cli
+
+if TYPE_CHECKING:
+    import pytest
 
 
 class _TrieStub:

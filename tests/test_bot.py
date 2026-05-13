@@ -1,4 +1,4 @@
-from pathlib import Path
+from typing import TYPE_CHECKING
 
 import pytest
 
@@ -7,7 +7,11 @@ from strands_solver.bot.bot_device import BotDevice
 from strands_solver.bot.bot_fake import BotFake
 from strands_solver.device.device_driver import DeviceDriver
 from strands_solver.solver.solver import Trie
-from strands_solver.util.util import BoardCoord, PixelCoord
+
+if TYPE_CHECKING:
+    from pathlib import Path
+
+    from strands_solver.util.util import BoardCoord, PixelCoord
 
 
 class _FakeDriver(DeviceDriver):

@@ -1,7 +1,5 @@
 """Reusable Strands board image rendering utilities."""
 
-from __future__ import annotations
-
 from dataclasses import dataclass
 from io import BytesIO
 from typing import TYPE_CHECKING, Any, cast
@@ -32,6 +30,8 @@ class Theme:
     word_letter_color: tuple[int, int, int]
     spangram_fill_color: tuple[int, int, int]
     spangram_letter_color: tuple[int, int, int]
+    selection_fill_color: tuple[int, int, int]
+    selection_letter_color: tuple[int, int, int]
 
 
 LIGHT_THEME = Theme(
@@ -42,6 +42,8 @@ LIGHT_THEME = Theme(
     word_letter_color=(18, 18, 18),
     spangram_fill_color=(248, 205, 5),
     spangram_letter_color=(18, 18, 18),
+    selection_fill_color=(219, 216, 197),
+    selection_letter_color=(18, 18, 18),
 )
 
 DARK_THEME = Theme(
@@ -52,6 +54,8 @@ DARK_THEME = Theme(
     word_letter_color=(18, 18, 18),
     spangram_fill_color=(248, 205, 5),
     spangram_letter_color=(18, 18, 18),
+    selection_fill_color=(219, 216, 197),
+    selection_letter_color=(18, 18, 18),
 )
 
 
@@ -64,9 +68,37 @@ class RenderConfig:
     board_width_ratio: float = 0.74
     board_height_ratio: float = 0.53
     board_center_y_ratio: float = 0.54
+    board_center_x_ratio: float = 0.5
     cell_radius_ratio: float = 0.42
-    font_size_ratio: float = 0.48
+    font_size_ratio: float = 0.44
     font_path: Path | None = None
+    board_left_px: int | None = None
+    board_top_px: int | None = None
+    cell_width_px: float | None = None
+    cell_height_px: float | None = None
+
+    @staticmethod
+    def board_reader_v3() -> RenderConfig:
+        """Return config aligned to BoardReaderTesseractOpenCV3 geometry.
+
+        The board-reader assumes a fixed 8x6 grid with cell centers at:
+        - top-left: (155, 752)
+        - bottom-right: (920, 1791)
+
+        This preset renders synthetic screenshots at 1080x2246 with exact
+        board placement so OCR/cell-state sampling uses the intended pixels.
+
+        """
+        return RenderConfig(
+            width=1080,
+            height=2246,
+            board_left_px=79,
+            board_top_px=678,
+            cell_width_px=153.0,
+            cell_height_px=148.5,
+            cell_radius_ratio=0.4,
+            font_size_ratio=0.44,
+        )
 
 
 def pick_theme(mode: str) -> Theme:
@@ -170,17 +202,21 @@ def _load_font(config: RenderConfig, font_size: int) -> object:
         return image_font.truetype(str(config.font_path), size=font_size)
 
     try:
-        return image_font.truetype("DejaVuSans-Bold.ttf", size=font_size)
+        return image_font.truetype("DejaVuSans.ttf", size=font_size)
     except OSError:
-        return image_font.load_default()
+        try:
+            return image_font.truetype("DejaVuSans-Bold.ttf", size=font_size)
+        except OSError:
+            return image_font.load_default()
 
 
-def render_board_png(  # noqa: PLR0915
+def render_board_png(  # noqa: C901, PLR0912, PLR0913, PLR0915
     board_rows: list[str],
     *,
     mode: str,
     word_coords: set[BoardCoord] | None = None,
     spangram_coords: set[BoardCoord] | None = None,
+    selection_coords: set[BoardCoord] | None = None,
     config: RenderConfig | None = None,
 ) -> tuple[bytes, dict[BoardCoord, PixelCoord]]:
     """Render a board PNG and return image bytes plus cell-center mapping.
@@ -190,6 +226,7 @@ def render_board_png(  # noqa: PLR0915
         mode: Rendering mode, `"light"` or `"dark"`.
         word_coords: Coordinates to highlight as regular word cells.
         spangram_coords: Coordinates to highlight as spangram cells.
+        selection_coords: Coordinates to highlight as selection cells.
         config: Optional rendering configuration override.
 
     Returns:
@@ -222,6 +259,7 @@ def render_board_png(  # noqa: PLR0915
     cols = len(normalized_rows[0])
     active_word_coords = word_coords or set()
     active_spangram_coords = spangram_coords or set()
+    active_selection_coords = selection_coords or set()
 
     theme = pick_theme(mode)
     image_module = cast("Any", PILImage)
@@ -229,10 +267,24 @@ def render_board_png(  # noqa: PLR0915
     image = image_module.new("RGB", (cfg.width, cfg.height), color=theme.canvas_color)
     draw = draw_module.Draw(image)
 
-    board_width = int(cfg.width * cfg.board_width_ratio)
-    board_height = int(cfg.height * cfg.board_height_ratio)
-    board_left = (cfg.width - board_width) // 2
-    board_top = int(cfg.height * cfg.board_center_y_ratio - board_height / 2)
+    if cfg.cell_width_px is not None and cfg.cell_height_px is not None:
+        cell_width = cfg.cell_width_px
+        cell_height = cfg.cell_height_px
+        board_width = cell_width * cols
+        board_height = cell_height * rows
+    else:
+        board_width = int(cfg.width * cfg.board_width_ratio)
+        board_height = int(cfg.height * cfg.board_height_ratio)
+        cell_width = board_width / cols
+        cell_height = board_height / rows
+
+    if cfg.board_left_px is not None and cfg.board_top_px is not None:
+        board_left = cfg.board_left_px
+        board_top = cfg.board_top_px
+    else:
+        board_left = int(cfg.width * cfg.board_center_x_ratio - board_width / 2)
+        board_top = int(cfg.height * cfg.board_center_y_ratio - board_height / 2)
+
     board_right = board_left + board_width
     board_bottom = board_top + board_height
 
@@ -242,8 +294,6 @@ def render_board_png(  # noqa: PLR0915
         fill=theme.board_color,
     )
 
-    cell_width = board_width / cols
-    cell_height = board_height / rows
     cell_radius = int(min(cell_width, cell_height) * cfg.cell_radius_ratio)
     font_size = max(10, int(min(cell_width, cell_height) * cfg.font_size_ratio))
     font: Any = _load_font(cfg, font_size)
@@ -264,6 +314,9 @@ def render_board_png(  # noqa: PLR0915
             elif cell_coord in active_word_coords:
                 fill_color = theme.word_fill_color
                 letter_color = theme.word_letter_color
+            elif cell_coord in active_selection_coords:
+                fill_color = theme.selection_fill_color
+                letter_color = theme.selection_letter_color
             else:
                 fill_color = None
 

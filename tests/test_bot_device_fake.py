@@ -1,3 +1,5 @@
+from typing import TYPE_CHECKING
+
 import pytest
 
 from strands_solver.board_reader.board_reader import Highlight
@@ -5,7 +7,9 @@ from strands_solver.board_reader.board_reader_tesseract_open_cv import BoardRead
 from strands_solver.bot.bot_device_fake import BotDeviceFake
 from strands_solver.device.device_driver_fake import DeviceDriverFake
 from strands_solver.image_renderer.board_image_renderer import RenderConfig
-from strands_solver.util.util import BoardCoord, PixelCoord
+
+if TYPE_CHECKING:
+    from strands_solver.util.util import BoardCoord, PixelCoord
 
 
 def _board() -> list[str]:

@@ -6,7 +6,7 @@ A Python tool for solving Strands word puzzle games. Given a board grid and allo
 
 ### Prerequisites
 
-- **Python 3.12+** must be installed on your system
+- **Python 3.14+** must be installed on your system
 - **uv** package manager (install via https://docs.astral.sh/uv/getting-started/)
 
 ### Environment Setup

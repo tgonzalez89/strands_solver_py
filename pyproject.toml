@@ -15,7 +15,7 @@ authors = [
   { name = "Tomas Gonzalez Aragon", email = "tomas.gonz.arg@gmail.com" },
 ]
 keywords = ["strands_solver"]
-requires-python = ">=3.12"
+requires-python = ">=3.14"
 # Runtime dependencies for end users of the library/CLI.
 # Keep this stub even when empty so adding first-party requirements is obvious.
 dependencies = []
@@ -62,16 +62,20 @@ dev = [
 # Ruff - linting + formatting (replaces black, isort, flake8, pylint)
 # ---------------------------------------------------------------------------
 [tool.ruff]
-target-version = "py312"
+target-version = "py314"
 line-length = 120
 src = ["src"]
 
 [tool.ruff.lint]
 select = ["ALL"]
 ignore = [
-  "D203", # Conflicts with D211.
-  "D213", # Conflicts with D212.
-  "T201", # Allow print statements. They are used in the CLI and for debugging.
+  "COM812", # Absense of trailing comma is OK since formatter automatically adds them when needed.
+  "D203",   # Conflicts with D211.
+  "D213",   # Conflicts with D212.
+  "FIX002", # Allow TODO comments without requiring immediate resolution.
+  "S311",   # Allow `random` module usage for non-cryptographic purposes.
+  "T201",   # Allow print statements. They are used in the CLI and for debugging.
+  "TD",     # Allow TODO format/link/author variations globally.
 ]
 fixable = ["ALL"]
 unfixable = []

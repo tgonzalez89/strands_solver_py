@@ -1,7 +1,5 @@
 """OpenCV + Tesseract board-reader implementation."""
 
-from __future__ import annotations
-
 import colorsys
 import re
 from typing import TYPE_CHECKING, Any, cast

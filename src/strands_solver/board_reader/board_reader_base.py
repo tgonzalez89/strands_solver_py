@@ -1,7 +1,5 @@
 """Grid-aware base class for screenshot-based board readers."""
 
-from __future__ import annotations
-
 import zlib
 from abc import abstractmethod
 from typing import TYPE_CHECKING

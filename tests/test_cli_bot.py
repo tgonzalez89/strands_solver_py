@@ -2,11 +2,11 @@ from argparse import Namespace
 from pathlib import Path
 from typing import TYPE_CHECKING, cast
 
-import pytest
-
 import strands_solver.cli.bot as cli
 
 if TYPE_CHECKING:
+    import pytest
+
     from strands_solver.solver.solver import Trie
 
 

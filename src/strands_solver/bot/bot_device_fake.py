@@ -1,7 +1,5 @@
 """Fake device-backed bot for OCR and OpenCV integration testing."""
 
-from __future__ import annotations
-
 from typing import TYPE_CHECKING
 
 from strands_solver.board_reader.board_reader_tesseract_open_cv import BoardReaderTesseractOpenCv

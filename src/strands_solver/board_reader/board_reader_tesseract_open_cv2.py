@@ -1,7 +1,5 @@
 """OpenCV + tesserocr board reader (v2) skeleton."""
 
-from __future__ import annotations
-
 import os
 from pathlib import Path
 from statistics import median
@@ -87,12 +85,19 @@ class BoardReaderTesseractOpenCV2(BoardReaderBase):
         raise NotImplementedError(msg)
 
     def _extract_cell_centers(self, image: object) -> list[list[tuple[int, int]]]:
-        """Locate each board cell center using circle detection and grid fitting.
+        """Return board cell centers.
 
-        Strategy:
-        1) Detect circular letter-cells with Hough circles.
-        2) Fit evenly spaced x/y lattice coordinates for the configured grid.
-        3) Fall back to normalized geometry if circle fitting is unreliable.
+        Args:
+            image: Decoded OpenCV image. Currently unused while hardcoded calibration
+                is enabled.
+
+        Returns:
+            Row-major grid of (x, y) centers with shape [rows][cols].
+
+        Notes:
+            Uses a temporary hardcoded calibration return path; the circle-detection
+            and grid-fitting code below is currently bypassed.
+
         """
         # HARDCODED: Return early with centers from centers.txt data
         # Calibrated from visual inspection: x_spacing=154, y_spacing=149, start=(154,748)
@@ -260,9 +265,18 @@ class BoardReaderTesseractOpenCV2(BoardReaderBase):
         return best_lines, best_score
 
     def _fallback_cell_centers(self, image_w: int, image_h: int) -> list[list[tuple[int, int]]]:
-        """Fallback center estimation using normalized board geometry ratios.
+        """Estimate cell centers from normalized board-geometry ratios.
 
-        Ratios are tuned from real screenshot samples and assume NYT Strands portrait UI.
+        Args:
+            image_w: Image width in pixels.
+            image_h: Image height in pixels.
+
+        Returns:
+            Row-major grid of (x, y) centers with shape [rows][cols].
+
+        Notes:
+            Ratios are tuned from real screenshot samples for NYT Strands portrait UI.
+
         """
         left_x = round(image_w * 0.143)
         right_x = round(image_w * 0.852)

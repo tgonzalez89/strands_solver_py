@@ -1,7 +1,5 @@
 """Device-backed bot implementation."""
 
-from __future__ import annotations
-
 from typing import TYPE_CHECKING
 
 from strands_solver.board_reader.board_reader import BoardReader, BoardState, Highlight

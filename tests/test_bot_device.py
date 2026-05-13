@@ -1,7 +1,11 @@
+from typing import TYPE_CHECKING
+
 from strands_solver.board_reader.board_reader import BoardReader, BoardState, Highlight
 from strands_solver.bot.bot_device import BotDevice
 from strands_solver.device.device_driver import DeviceDriver
-from strands_solver.util.util import BoardCoord, PixelCoord
+
+if TYPE_CHECKING:
+    from strands_solver.util.util import BoardCoord, PixelCoord
 
 
 class MockDriver(DeviceDriver):

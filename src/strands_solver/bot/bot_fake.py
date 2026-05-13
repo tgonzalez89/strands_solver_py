@@ -1,7 +1,5 @@
 """In-memory bot implementation for fixtures and local tests."""
 
-from __future__ import annotations
-
 from pathlib import Path
 from typing import TYPE_CHECKING
 

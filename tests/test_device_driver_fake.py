@@ -1,9 +1,13 @@
-import pytest
+from typing import TYPE_CHECKING
 
 import strands_solver.device.device_driver_fake as fake_driver_module
 from strands_solver.device.device_driver_fake import DeviceDriverFake
 from strands_solver.image_renderer.board_image_renderer import RenderConfig, render_board_png
-from strands_solver.util.util import BoardCoord, PixelCoord
+
+if TYPE_CHECKING:
+    import pytest
+
+    from strands_solver.util.util import BoardCoord, PixelCoord
 
 
 def _board() -> list[str]:

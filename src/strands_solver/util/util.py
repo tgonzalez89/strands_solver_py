@@ -1,7 +1,5 @@
 """Input/output helpers and validation utilities for solver data files."""
 
-from __future__ import annotations
-
 import ast
 from random import Random
 from string import ascii_lowercase
@@ -213,7 +211,7 @@ def generate_random_board(
         msg = f"cols must be between {MIN_BOARD_DIMENSION} and {MAX_BOARD_DIMENSION}"
         raise ValueError(msg)
 
-    generator = rng or Random()  # noqa: S311
+    generator = rng or Random()
     alphabet = ascii_lowercase + (BLOCKED_CELL if include_blocked else "")
     return ["".join(generator.choice(alphabet) for _ in range(cols)) for _ in range(rows)]
 

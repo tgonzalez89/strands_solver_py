@@ -1,7 +1,7 @@
 """ADB-backed device driver implementation."""
 
 import subprocess
-from itertools import pairwise
+import time
 from typing import TYPE_CHECKING
 
 from strands_solver.device.device_driver import DeviceDriver
@@ -20,8 +20,9 @@ class DeviceDriverADB(DeviceDriver):
         adb_server_host: str | None = None,
         adb_server_port: int | None = None,
         device_serial: str | None = None,
-        swipe_duration_ms: int = 120,
-        command_timeout_s: float = 15.0,
+        tap_delay_ms: int = 100,
+        swipe_duration_ms: int | None = None,
+        command_timeout_s: float = 10.0,
     ) -> None:
         """Initialize the ADB-backed driver.
 
@@ -30,7 +31,8 @@ class DeviceDriverADB(DeviceDriver):
             adb_server_host: Optional adb server host passed via `adb -H`.
             adb_server_port: Optional adb server port passed via `adb -P`.
             device_serial: Optional device serial to pass via `adb -s`.
-            swipe_duration_ms: Duration to use for each swipe call.
+            tap_delay_ms: Delay in milliseconds between taps.
+            swipe_duration_ms: Deprecated alias for `tap_delay_ms`.
             command_timeout_s: Timeout in seconds per adb command.
 
         """
@@ -38,7 +40,7 @@ class DeviceDriverADB(DeviceDriver):
         self._adb_server_host = adb_server_host
         self._adb_server_port = adb_server_port
         self._device_serial = device_serial
-        self._swipe_duration_ms = swipe_duration_ms
+        self._tap_delay_ms = swipe_duration_ms if swipe_duration_ms is not None else tap_delay_ms
         self._command_timeout_s = command_timeout_s
 
     def _build_adb_command(self, args: list[str]) -> list[str]:
@@ -93,7 +95,12 @@ class DeviceDriverADB(DeviceDriver):
         return screenshot_bytes
 
     def execute_path(self, pixel_path: list[PixelCoord]) -> None:
-        """Execute a board path as one or more ADB swipe gestures.
+        """Execute a board path as a sequence of taps followed by a confirmation tap.
+
+        Each coordinate in the path is tapped once to select it. After all cells
+        are tapped, the last cell is tapped a second time to confirm the word.
+        A short delay of ``tap_delay_ms`` milliseconds is inserted between
+        each tap so the app can register them individually.
 
         Args:
             pixel_path: Ordered pixel coordinates to swipe through.
@@ -107,32 +114,12 @@ class DeviceDriverADB(DeviceDriver):
             msg = "pixel_path must contain at least one coordinate"
             raise ValueError(msg)
 
-        if len(pixel_path) == 1:
-            start_x, start_y = pixel_path[0]
-            self._run_adb_command(
-                [
-                    "shell",
-                    "input",
-                    "swipe",
-                    str(start_x),
-                    str(start_y),
-                    str(start_x),
-                    str(start_y),
-                    str(self._swipe_duration_ms),
-                ],
-            )
-            return
+        delay_s = self._tap_delay_ms / 1000.0
 
-        for (start_x, start_y), (end_x, end_y) in pairwise(pixel_path):
-            self._run_adb_command(
-                [
-                    "shell",
-                    "input",
-                    "swipe",
-                    str(start_x),
-                    str(start_y),
-                    str(end_x),
-                    str(end_y),
-                    str(self._swipe_duration_ms),
-                ],
-            )
+        for x, y in pixel_path:
+            self._run_adb_command(["shell", "input", "tap", str(x), str(y)])
+            time.sleep(delay_s)
+
+        # Confirm by tapping the last cell a second time.
+        last_x, last_y = pixel_path[-1]
+        self._run_adb_command(["shell", "input", "tap", str(last_x), str(last_y)])

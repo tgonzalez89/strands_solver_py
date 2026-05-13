@@ -20,8 +20,14 @@ def parse_args(argv: list[str] | None = None) -> argparse.Namespace:
     parser.add_argument("--adb-host", default="", help="ADB server host (passed as `adb -H`).")
     parser.add_argument("--adb-port", type=int, default=0, help="ADB server port (passed as `adb -P`).")
     parser.add_argument("--device-serial", default="", help="ADB device serial (from `adb devices`).")
-    parser.add_argument("--swipe-duration-ms", type=int, default=120, help="Duration in ms for each swipe segment.")
-    parser.add_argument("--adb-timeout-s", type=float, default=15.0, help="Timeout in seconds per adb command.")
+    parser.add_argument(
+        "--tap-delay-ms",
+        dest="tap_delay_ms",
+        type=int,
+        default=100,
+        help="Delay in ms between taps.",
+    )
+    parser.add_argument("--adb-timeout-s", type=float, default=10.0, help="Timeout in seconds per adb command.")
     parser.add_argument(
         "--tessdata-dir",
         default="",
@@ -47,7 +53,7 @@ def main(argv: list[str] | None = None) -> int:
         adb_server_host=args.adb_host or None,
         adb_server_port=args.adb_port if args.adb_port > 0 else None,
         device_serial=args.device_serial or None,
-        swipe_duration_ms=args.swipe_duration_ms,
+        tap_delay_ms=args.tap_delay_ms,
         command_timeout_s=args.adb_timeout_s,
     )
     bot = BotDevice(

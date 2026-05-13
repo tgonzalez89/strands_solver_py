@@ -4,11 +4,12 @@ import argparse
 import sys
 from pathlib import Path
 
-from strands_solver.board_reader.board_reader_tesseract_open_cv import BoardReaderTesseractOpenCv
+from strands_solver.board_reader.board_reader_tesseract_open_cv import BoardReaderTesseractOpenCV
 from strands_solver.bot.bot_device import BotDevice
 from strands_solver.bot.bot_device_fake import BotDeviceFake, InitialOcrMismatchError
 from strands_solver.bot.bot_fake import BotFake
 from strands_solver.device.device_driver_appium import DeviceDriverAppium
+from strands_solver.image_renderer.board_image_renderer import RenderConfig
 from strands_solver.solver.solver import Trie
 from strands_solver.util.util import BoardCoord, load_allowed_words, load_moves
 
@@ -52,7 +53,7 @@ def _run_appium_mode(args: argparse.Namespace, trie: Trie) -> int:
         print("--board/--valid-moves are not used with --driver appium", file=sys.stderr)
         return 2
 
-    bot = BotDevice(driver=DeviceDriverAppium(), reader=BoardReaderTesseractOpenCv())
+    bot = BotDevice(driver=DeviceDriverAppium(), reader=BoardReaderTesseractOpenCV())
     try:
         successful_moves = bot.run(trie, verbose=args.verbose)
     except NotImplementedError as error:
@@ -75,6 +76,7 @@ def _run_fake_mode(args: argparse.Namespace, trie: Trie) -> int:
             valid_moves=args.valid_moves,
             spangram_indexes={index for index in args.spangram_index if index >= 0},
             mode=args.fake_mode,
+            render_config=RenderConfig(),
         )
     except InitialOcrMismatchError as error:
         print(f"fake_mode_ocr_mismatch: {error}", file=sys.stderr)

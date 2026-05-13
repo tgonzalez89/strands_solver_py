@@ -2,7 +2,7 @@
 
 from dataclasses import dataclass
 from io import BytesIO
-from typing import TYPE_CHECKING, Any, cast
+from typing import TYPE_CHECKING
 
 try:
     from PIL import Image as PILImage
@@ -18,13 +18,14 @@ if TYPE_CHECKING:
 
     from strands_solver.util.util import BoardCoord, PixelCoord
 
+from strands_solver.util.util import validate_board
+
 
 @dataclass(frozen=True)
 class Theme:
     """Color theme for board rendering."""
 
-    canvas_color: tuple[int, int, int]
-    board_color: tuple[int, int, int]
+    background_color: tuple[int, int, int]
     unselected_letter_color: tuple[int, int, int]
     word_fill_color: tuple[int, int, int]
     word_letter_color: tuple[int, int, int]
@@ -35,8 +36,7 @@ class Theme:
 
 
 LIGHT_THEME = Theme(
-    canvas_color=(255, 255, 255),
-    board_color=(255, 255, 255),
+    background_color=(255, 255, 255),
     unselected_letter_color=(18, 18, 18),
     word_fill_color=(174, 223, 238),
     word_letter_color=(18, 18, 18),
@@ -47,8 +47,7 @@ LIGHT_THEME = Theme(
 )
 
 DARK_THEME = Theme(
-    canvas_color=(18, 18, 18),
-    board_color=(18, 18, 18),
+    background_color=(18, 18, 18),
     unselected_letter_color=(248, 248, 248),
     word_fill_color=(174, 223, 238),
     word_letter_color=(18, 18, 18),
@@ -65,81 +64,36 @@ class RenderConfig:
 
     width: int = 1080
     height: int = 2246
-    board_width_ratio: float = 0.74
-    board_height_ratio: float = 0.53
-    board_center_y_ratio: float = 0.54
-    board_center_x_ratio: float = 0.5
+    board_left_px: int = 79
+    board_top_px: int = 678
+    cell_width_px: float = 153.0
+    cell_height_px: float = 148.5
     cell_radius_ratio: float = 0.42
     font_size_ratio: float = 0.44
     font_path: Path | None = None
-    board_left_px: int | None = None
-    board_top_px: int | None = None
-    cell_width_px: float | None = None
-    cell_height_px: float | None = None
-
-    @staticmethod
-    def board_reader_v3() -> RenderConfig:
-        """Return config aligned to BoardReaderTesseractOpenCV3 geometry.
-
-        The board-reader assumes a fixed 8x6 grid with cell centers at:
-        - top-left: (155, 752)
-        - bottom-right: (920, 1791)
-
-        This preset renders synthetic screenshots at 1080x2246 with exact
-        board placement so OCR/cell-state sampling uses the intended pixels.
-
-        """
-        return RenderConfig(
-            width=1080,
-            height=2246,
-            board_left_px=79,
-            board_top_px=678,
-            cell_width_px=153.0,
-            cell_height_px=148.5,
-            cell_radius_ratio=0.4,
-            font_size_ratio=0.44,
-        )
 
 
-def pick_theme(mode: str) -> Theme:
-    """Select the render theme for a mode string.
+@dataclass(frozen=True)
+class CellDrawContext:
+    """Context bundle for drawing board cells."""
 
-    Args:
-        mode: Rendering mode, typically `"light"` or `"dark"`.
+    draw: PILImageDraw.ImageDraw
+    board_left: int
+    board_top: int
+    cell_width: float
+    cell_height: float
+    cell_radius: int
+    theme: Theme
+    font: PILImageFont.ImageFont | PILImageFont.FreeTypeFont | PILImageFont.TransposedFont
+    active_word_coords: set[BoardCoord]
+    active_spangram_coords: set[BoardCoord]
+    active_selection_coords: set[BoardCoord]
 
-    Returns:
-        Theme configuration for the selected mode.
 
-    """
-    if mode == "light":
-        return LIGHT_THEME
-    return DARK_THEME
-
-
-def validate_board_shape(board_rows: list[str]) -> None:
-    """Validate board shape constraints required by the renderer.
-
-    Args:
-        board_rows: Board rows to validate.
-
-    Raises:
-        ValueError: If the board is empty, has empty first row, or has
-            inconsistent row widths.
-
-    """
-    if not board_rows:
-        msg = "Board is empty."
-        raise ValueError(msg)
-
-    width = len(board_rows[0])
-    if width == 0:
-        msg = "Board has an empty first row."
-        raise ValueError(msg)
-
-    for row_num, row in enumerate(board_rows, start=1):
-        if len(row) != width:
-            msg = f"Board row {row_num} has width {len(row)} but expected {width}."
-            raise ValueError(msg)
+THEMES: dict[str, Theme] = {
+    "light": LIGHT_THEME,
+    "dark": DARK_THEME,
+}
 
 
 def build_coord_sets(
@@ -172,7 +126,10 @@ def build_coord_sets(
     return word_coords, spangram_coords
 
 
-def _load_font(config: RenderConfig, font_size: int) -> object:
+def _load_font(
+    config: RenderConfig,
+    font_size: int,
+) -> PILImageFont.ImageFont | PILImageFont.FreeTypeFont | PILImageFont.TransposedFont:
     """Load a font object suitable for board lettering.
 
     Args:
@@ -196,37 +153,120 @@ def _load_font(config: RenderConfig, font_size: int) -> object:
             msg,
         )
 
-    image_font = cast("Any", PILImageFont)
-
     if config.font_path is not None:
-        return image_font.truetype(str(config.font_path), size=font_size)
+        return PILImageFont.truetype(str(config.font_path), size=font_size)
 
     try:
-        return image_font.truetype("DejaVuSans.ttf", size=font_size)
+        return PILImageFont.truetype("DejaVuSans.ttf", size=font_size)
     except OSError:
         try:
-            return image_font.truetype("DejaVuSans-Bold.ttf", size=font_size)
+            return PILImageFont.truetype("DejaVuSans-Bold.ttf", size=font_size)
         except OSError:
-            return image_font.load_default()
+            return PILImageFont.load_default()
 
 
-def render_board_png(  # noqa: C901, PLR0912, PLR0913, PLR0915
+def _resolve_board_geometry(cfg: RenderConfig, rows: int, cols: int) -> tuple[float, float, int, int, float, float]:
+    """Resolve board placement and cell geometry.
+
+    Args:
+        cfg: Renderer geometry configuration.
+        rows: Number of board rows.
+        cols: Number of board columns.
+
+    Returns:
+        Tuple of `(board_width, board_height, board_left, board_top, cell_width, cell_height)`.
+
+    """
+    cell_width = cfg.cell_width_px
+    cell_height = cfg.cell_height_px
+    board_width = cell_width * cols
+    board_height = cell_height * rows
+    board_left = cfg.board_left_px
+    board_top = cfg.board_top_px
+
+    return board_width, board_height, board_left, board_top, cell_width, cell_height
+
+
+def _resolve_cell_colors(
+    cell_coord: BoardCoord,
+    theme: Theme,
+    active_word_coords: set[BoardCoord],
+    active_spangram_coords: set[BoardCoord],
+    active_selection_coords: set[BoardCoord],
+) -> tuple[tuple[int, int, int] | None, tuple[int, int, int]]:
+    """Resolve fill and letter colors for one cell coordinate.
+
+    Returns:
+        Tuple of `(fill_color, letter_color)` where `fill_color` is optional.
+
+    """
+    if cell_coord in active_spangram_coords:
+        return theme.spangram_fill_color, theme.spangram_letter_color
+    if cell_coord in active_word_coords:
+        return theme.word_fill_color, theme.word_letter_color
+    if cell_coord in active_selection_coords:
+        return theme.selection_fill_color, theme.selection_letter_color
+    return None, theme.unselected_letter_color
+
+
+def _draw_board_cells(normalized_rows: list[str], context: CellDrawContext) -> dict[BoardCoord, PixelCoord]:
+    """Draw all board cells and return center coordinates.
+
+    Args:
+        normalized_rows: Uppercased board rows to draw.
+        context: Shared drawing context and style values.
+
+    Returns:
+        Mapping from board coordinates to rendered pixel centers.
+
+    """
+    draw = context.draw
+    font = context.font
+
+    centers: dict[BoardCoord, PixelCoord] = {}
+    for row_idx, row_text in enumerate(normalized_rows):
+        for col_idx, letter in enumerate(row_text):
+            center_x = int(context.board_left + (col_idx + 0.5) * context.cell_width)
+            center_y = int(context.board_top + (row_idx + 0.5) * context.cell_height)
+            cell_coord = (row_idx, col_idx)
+            centers[cell_coord] = (center_x, center_y)
+
+            fill_color, letter_color = _resolve_cell_colors(
+                cell_coord,
+                context.theme,
+                context.active_word_coords,
+                context.active_spangram_coords,
+                context.active_selection_coords,
+            )
+
+            if fill_color is not None:
+                draw.ellipse(
+                    [
+                        (center_x - context.cell_radius, center_y - context.cell_radius),
+                        (center_x + context.cell_radius, center_y + context.cell_radius),
+                    ],
+                    fill=fill_color,
+                )
+
+            draw.text((center_x, center_y), letter, fill=letter_color, font=font, anchor="mm")
+
+    return centers
+
+
+def render_board_png(
     board_rows: list[str],
     *,
     mode: str,
-    word_coords: set[BoardCoord] | None = None,
-    spangram_coords: set[BoardCoord] | None = None,
-    selection_coords: set[BoardCoord] | None = None,
     config: RenderConfig | None = None,
+    **highlight_coords: set[BoardCoord] | None,
 ) -> tuple[bytes, dict[BoardCoord, PixelCoord]]:
     """Render a board PNG and return image bytes plus cell-center mapping.
 
     Args:
         board_rows: Board rows to render.
         mode: Rendering mode, `"light"` or `"dark"`.
-        word_coords: Coordinates to highlight as regular word cells.
-        spangram_coords: Coordinates to highlight as spangram cells.
-        selection_coords: Coordinates to highlight as selection cells.
+        highlight_coords: Optional keyword highlight sets using keys
+            `word_coords`, `spangram_coords`, and `selection_coords`.
         config: Optional rendering configuration override.
 
     Returns:
@@ -246,9 +286,8 @@ def render_board_png(  # noqa: C901, PLR0912, PLR0913, PLR0915
         raise ModuleNotFoundError(
             msg,
         )
-
+    validate_board([row.lower() for row in board_rows])
     normalized_rows = [row.upper() for row in board_rows]
-    validate_board_shape(normalized_rows)
 
     cfg = config or RenderConfig()
     if cfg.width <= 0 or cfg.height <= 0:
@@ -257,33 +296,15 @@ def render_board_png(  # noqa: C901, PLR0912, PLR0913, PLR0915
 
     rows = len(normalized_rows)
     cols = len(normalized_rows[0])
-    active_word_coords = word_coords or set()
-    active_spangram_coords = spangram_coords or set()
-    active_selection_coords = selection_coords or set()
+    active_word_coords = highlight_coords.get("word_coords") or set()
+    active_spangram_coords = highlight_coords.get("spangram_coords") or set()
+    active_selection_coords = highlight_coords.get("selection_coords") or set()
 
-    theme = pick_theme(mode)
-    image_module = cast("Any", PILImage)
-    draw_module = cast("Any", PILImageDraw)
-    image = image_module.new("RGB", (cfg.width, cfg.height), color=theme.canvas_color)
-    draw = draw_module.Draw(image)
+    theme = THEMES.get(mode, DARK_THEME)
+    image = PILImage.new("RGB", (cfg.width, cfg.height), color=theme.background_color)
+    draw = PILImageDraw.Draw(image)
 
-    if cfg.cell_width_px is not None and cfg.cell_height_px is not None:
-        cell_width = cfg.cell_width_px
-        cell_height = cfg.cell_height_px
-        board_width = cell_width * cols
-        board_height = cell_height * rows
-    else:
-        board_width = int(cfg.width * cfg.board_width_ratio)
-        board_height = int(cfg.height * cfg.board_height_ratio)
-        cell_width = board_width / cols
-        cell_height = board_height / rows
-
-    if cfg.board_left_px is not None and cfg.board_top_px is not None:
-        board_left = cfg.board_left_px
-        board_top = cfg.board_top_px
-    else:
-        board_left = int(cfg.width * cfg.board_center_x_ratio - board_width / 2)
-        board_top = int(cfg.height * cfg.board_center_y_ratio - board_height / 2)
+    board_width, board_height, board_left, board_top, cell_width, cell_height = _resolve_board_geometry(cfg, rows, cols)
 
     board_right = board_left + board_width
     board_bottom = board_top + board_height
@@ -291,45 +312,31 @@ def render_board_png(  # noqa: C901, PLR0912, PLR0913, PLR0915
     draw.rounded_rectangle(
         [(board_left, board_top), (board_right, board_bottom)],
         radius=max(8, int(min(board_width, board_height) * 0.03)),
-        fill=theme.board_color,
+        fill=theme.background_color,
     )
 
     cell_radius = int(min(cell_width, cell_height) * cfg.cell_radius_ratio)
     font_size = max(10, int(min(cell_width, cell_height) * cfg.font_size_ratio))
-    font: Any = _load_font(cfg, font_size)
+    font = _load_font(cfg, font_size)
 
-    centers: dict[BoardCoord, PixelCoord] = {}
-    for row_idx, row_text in enumerate(normalized_rows):
-        for col_idx, letter in enumerate(row_text):
-            center_x = int(board_left + (col_idx + 0.5) * cell_width)
-            center_y = int(board_top + (row_idx + 0.5) * cell_height)
-            cell_coord = (row_idx, col_idx)
-            centers[cell_coord] = (center_x, center_y)
+    draw_context = CellDrawContext(
+        draw,
+        board_left,
+        board_top,
+        cell_width,
+        cell_height,
+        cell_radius,
+        theme,
+        font,
+        active_word_coords,
+        active_spangram_coords,
+        active_selection_coords,
+    )
 
-            fill_color: tuple[int, int, int] | None
-            letter_color = theme.unselected_letter_color
-            if cell_coord in active_spangram_coords:
-                fill_color = theme.spangram_fill_color
-                letter_color = theme.spangram_letter_color
-            elif cell_coord in active_word_coords:
-                fill_color = theme.word_fill_color
-                letter_color = theme.word_letter_color
-            elif cell_coord in active_selection_coords:
-                fill_color = theme.selection_fill_color
-                letter_color = theme.selection_letter_color
-            else:
-                fill_color = None
-
-            if fill_color is not None:
-                draw.ellipse(
-                    [
-                        (center_x - cell_radius, center_y - cell_radius),
-                        (center_x + cell_radius, center_y + cell_radius),
-                    ],
-                    fill=fill_color,
-                )
-
-            draw.text((center_x, center_y), letter, fill=letter_color, font=font, anchor="mm")
+    centers = _draw_board_cells(
+        normalized_rows,
+        draw_context,
+    )
 
     buffer = BytesIO()
     image.save(buffer, format="PNG")

@@ -55,9 +55,9 @@ class BotDevice(Bot):
     @staticmethod
     def _solver_board_from_state(state: BoardState) -> list[str]:
         if state.cell_states is None:
-            return state.board.copy()
+            return [row.lower() for row in state.board]
 
-        board_chars = [list(row) for row in state.board]
+        board_chars = [list(row.lower()) for row in state.board]
         for row_idx, row_states in enumerate(state.cell_states):
             for col_idx, highlight in enumerate(row_states):
                 if highlight == Highlight.NONE:

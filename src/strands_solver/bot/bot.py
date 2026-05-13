@@ -53,7 +53,7 @@ class Bot(ABC):
             match_found = False
             if verbose:
                 board_for_printing = board_to_text(board, " ")
-                print(f"[VERBOSE] Finding paths for board:\n{board_for_printing}", end="")
+                print(f"[VERBOSE] Finding paths for board:\n{board_for_printing}")
             candidate_paths = trie.find_all_word_paths(board)
 
             for path in candidate_paths:

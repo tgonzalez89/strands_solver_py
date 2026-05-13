@@ -1,77 +1,125 @@
 #!/usr/bin/env python3
-"""Generate synthetic Strands example datasets for OCR/cell-state evaluation."""
+"""Generate synthetic Strands datasets for OCR and cell-state evaluation."""
 
 from __future__ import annotations
 
 import random
 import shutil
-import sys
+from dataclasses import dataclass
 from pathlib import Path
 from string import ascii_uppercase
 
-sys.path.insert(0, str(Path(__file__).parent / "src"))
-
 from strands_solver.image_renderer.board_image_renderer import RenderConfig, render_board_png
 
-DATA_DIR = Path("data")
+REPO_ROOT = Path(__file__).resolve().parents[1]
+
+DATA_DIR = REPO_ROOT / "data"
 
 ROWS = 8
 COLS = 6
 ALL_COORDS = {(row, col) for row in range(ROWS) for col in range(COLS)}
 
 
+@dataclass(frozen=True)
+class RenderExampleSpec:
+    """Describe one synthetic render invocation."""
+
+    image_name: str
+    mode: str
+    word_coords: set[tuple[int, int]]
+    spangram_coords: set[tuple[int, int]]
+    selection_coords: set[tuple[int, int]]
+    expected_symbols: list[list[str]]
+
+
 def build_baseline_board_rows() -> list[str]:
-    """Build baseline board with A-Z then only A's to fill remaining cells."""
+    """Build baseline board rows with A-Z followed by A-fill.
+
+    Returns:
+        Eight board rows (6 columns each) where cells are filled with
+        `A..Z` first and remaining cells with `A`.
+
+    """
     letters = list(ascii_uppercase)
     letters.extend(["A"] * (ROWS * COLS - len(letters)))
     return ["".join(letters[row * COLS : (row + 1) * COLS]) for row in range(ROWS)]
 
 
 def build_random_board_rows(rng: random.Random) -> list[str]:
-    """Build random uppercase board rows for one synthetic mixed example."""
+    """Build random uppercase board rows for one synthetic mixed example.
+
+    Args:
+        rng: Deterministic pseudo-random generator.
+
+    Returns:
+        Eight randomized board rows (6 columns each).
+
+    """
     letters = [rng.choice(ascii_uppercase) for _ in range(ROWS * COLS)]
     return ["".join(letters[row * COLS : (row + 1) * COLS]) for row in range(ROWS)]
 
 
 def write_board_file(example_dir: Path, board_rows: list[str]) -> None:
-    """Write board.txt for one example directory."""
+    """Write `board.txt` for one example directory.
+
+    Args:
+        example_dir: Target example directory.
+        board_rows: Board rows to persist.
+
+    """
     (example_dir / "board.txt").write_text("\n".join(board_rows) + "\n", encoding="utf-8")
 
 
 def write_cell_states_file(example_dir: Path, state_symbols: list[list[str]]) -> None:
-    """Write cell_states.txt using N/W/S symbols (space-separated)."""
+    """Write `cell_states.txt` using space-separated N/W/S symbols.
+
+    Args:
+        example_dir: Target example directory.
+        state_symbols: Expected state grid using N/W/S symbols.
+
+    """
     lines = [" ".join(row) for row in state_symbols]
     (example_dir / "cell_states.txt").write_text("\n".join(lines) + "\n", encoding="utf-8")
 
 
-def render_example(  # noqa: PLR0913
+def render_example(
     example_dir: Path,
     board_rows: list[str],
-    image_name: str,
-    mode: str,
-    word_coords: set[tuple[int, int]],
-    spangram_coords: set[tuple[int, int]],
-    selection_coords: set[tuple[int, int]],
-    expected_symbols: list[list[str]],
+    spec: RenderExampleSpec,
 ) -> None:
-    """Render and save one synthetic example image and references."""
+    """Render and persist one synthetic example image and references.
+
+    Args:
+        example_dir: Directory to create/update for this example.
+        board_rows: Board rows rendered into the screenshot.
+        spec: Render parameters and expected N/W/S reference grid.
+
+    """
     example_dir.mkdir(parents=True, exist_ok=True)
     write_board_file(example_dir, board_rows)
-    write_cell_states_file(example_dir, expected_symbols)
+    write_cell_states_file(example_dir, spec.expected_symbols)
 
     png_bytes, _ = render_board_png(
         board_rows,
-        mode=mode,
-        word_coords=word_coords,
-        spangram_coords=spangram_coords,
-        selection_coords=selection_coords,
-        config=RenderConfig.board_reader_v3(),
+        mode=spec.mode,
+        word_coords=spec.word_coords,
+        spangram_coords=spec.spangram_coords,
+        selection_coords=spec.selection_coords,
+        config=RenderConfig(),
     )
-    (example_dir / image_name).write_bytes(png_bytes)
+    (example_dir / spec.image_name).write_bytes(png_bytes)
 
 
 def make_uniform_symbols(symbol: str) -> list[list[str]]:
-    """Return an rows x cols grid filled with one symbol."""
+    """Return a rows-by-cols grid filled with one symbol.
+
+    Args:
+        symbol: Symbol to fill every cell with.
+
+    Returns:
+        Uniform symbol grid with shape `ROWS x COLS`.
+
+    """
     return [[symbol for _ in range(COLS)] for _ in range(ROWS)]
 
 
@@ -80,7 +128,17 @@ def make_expected_symbols_with_selection_as_none(
     spangram_coords: set[tuple[int, int]],
     selection_coords: set[tuple[int, int]],
 ) -> list[list[str]]:
-    """Build expected N/W/S grid; selection cells are expected as N."""
+    """Build expected N/W/S grid; selection cells remain expected as N.
+
+    Args:
+        word_coords: Coordinates expected as word cells.
+        spangram_coords: Coordinates expected as spangram cells.
+        selection_coords: Coordinates currently selected in UI state.
+
+    Returns:
+        Expected N/W/S state grid for evaluation.
+
+    """
     symbols = [["N" for _ in range(COLS)] for _ in range(ROWS)]
     for row, col in word_coords:
         symbols[row][col] = "W"
@@ -93,7 +151,7 @@ def make_expected_symbols_with_selection_as_none(
 
 
 def generate_baseline_cases() -> None:
-    """Generate baseline examples with all cells in one visual state/color."""
+    """Generate baseline examples with uniform highlight patterns."""
     baseline_board_rows = build_baseline_board_rows()
     cases = [
         ("example_synth_baseline_none_light", "light", set(), set(), set(), make_uniform_symbols("N")),
@@ -131,17 +189,25 @@ def generate_baseline_cases() -> None:
         render_example(
             DATA_DIR / name,
             baseline_board_rows,
-            "synthetic.png",
-            mode,
-            word_coords,
-            spangram_coords,
-            selection_coords,
-            expected_symbols,
+            RenderExampleSpec(
+                image_name="synthetic.png",
+                mode=mode,
+                word_coords=word_coords,
+                spangram_coords=spangram_coords,
+                selection_coords=selection_coords,
+                expected_symbols=expected_symbols,
+            ),
         )
 
 
 def generate_mixed_cases(count: int = 12, seed: int = 20260513) -> None:
-    """Generate mixed-highlight synthetic examples with deterministic randomness."""
+    """Generate mixed-highlight synthetic examples with deterministic randomness.
+
+    Args:
+        count: Number of mixed examples to generate.
+        seed: Seed for deterministic pseudo-random generation.
+
+    """
     rng = random.Random(seed)
     coords = sorted(ALL_COORDS)
 
@@ -177,12 +243,14 @@ def generate_mixed_cases(count: int = 12, seed: int = 20260513) -> None:
         render_example(
             example_dir,
             board_rows,
-            "synthetic.png",
-            mode,
-            word_coords,
-            spangram_coords,
-            selection_coords,
-            expected_symbols,
+            RenderExampleSpec(
+                image_name="synthetic.png",
+                mode=mode,
+                word_coords=word_coords,
+                spangram_coords=spangram_coords,
+                selection_coords=selection_coords,
+                expected_symbols=expected_symbols,
+            ),
         )
 
 
@@ -194,7 +262,12 @@ def clean_old_synthetic_dirs() -> None:
 
 
 def main() -> int:
-    """Generate synthetic datasets under data/example_synth_*."""
+    """Generate synthetic datasets under `data/example_synth_*`.
+
+    Returns:
+        Process exit code (`0` on success).
+
+    """
     DATA_DIR.mkdir(parents=True, exist_ok=True)
     clean_old_synthetic_dirs()
     generate_baseline_cases()

@@ -6,7 +6,6 @@ from strands_solver.board_reader.board_reader import Highlight
 from strands_solver.device.device_driver import DeviceDriver
 from strands_solver.image_renderer.board_image_renderer import RenderConfig, render_board_png
 from strands_solver.util.util import (
-    BLOCKED_CELL,
     BoardCoord,
     PixelCoord,
     load_board,
@@ -14,6 +13,8 @@ from strands_solver.util.util import (
     validate_board,
     validate_move_paths,
 )
+
+PIXEL_MATCH_TOLERANCE = 6
 
 
 class DeviceDriverFake(DeviceDriver):
@@ -121,8 +122,15 @@ class DeviceDriverFake(DeviceDriver):
         for pixel in pixel_path:
             coord = self._coord_by_pixel.get(pixel)
             if coord is None:
-                msg = f"pixel not found in current board centers: {pixel}"
-                raise ValueError(msg)
+                nearest_pixel, nearest_coord = min(
+                    self._coord_by_pixel.items(),
+                    key=lambda item: abs(item[0][0] - pixel[0]) + abs(item[0][1] - pixel[1]),
+                )
+                nearest_distance = abs(nearest_pixel[0] - pixel[0]) + abs(nearest_pixel[1] - pixel[1])
+                if nearest_distance > PIXEL_MATCH_TOLERANCE:
+                    msg = f"pixel not found in current board centers: {pixel}"
+                    raise ValueError(msg)
+                coord = nearest_coord
             move_coords.append(coord)
 
         move_key = tuple(move_coords)
@@ -133,6 +141,5 @@ class DeviceDriverFake(DeviceDriver):
         highlight_coords = self._spangram_coords if feedback is Highlight.SPANGRAM else self._word_coords
         for row_idx, col_idx in move_coords:
             highlight_coords.add((row_idx, col_idx))
-            self._board[row_idx][col_idx] = BLOCKED_CELL
 
         self._is_dirty = True

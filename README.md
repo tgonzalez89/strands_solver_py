@@ -32,12 +32,12 @@ A Python tool for solving Strands word puzzle games. Given a board grid and allo
 
 ### Running Tests
 
-Run the full test suite:
+Run the full test suite without coverage gate:
 ```bash
-uv run pytest
+uv run pytest --no-cov
 ```
 
-Run tests with coverage report:
+Run tests with coverage report and fail-under enforcement:
 ```bash
 uv run pytest --cov=src/strands_solver
 ```
@@ -46,7 +46,7 @@ Run specific test module:
 ```bash
 uv run pytest tests/test_solver.py
 uv run pytest tests/test_bot.py
-uv run pytest tests/test_io_utils.py
+uv run pytest tests/test_util_util.py
 ```
 
 Run a specific test:
@@ -67,6 +67,24 @@ Run pre-commit hooks:
 ```bash
 uv run pre-commit run --all-files
 ```
+
+### Tools Scripts
+
+Repository helper scripts now live in [tools/](tools/).
+
+- [tools/generate_synthetic_example_data.py](tools/generate_synthetic_example_data.py):
+   Regenerates synthetic OCR/cell-state datasets under [data/](data/) (`example_synth_*`).
+- [tools/run_extract_example_data.py](tools/run_extract_example_data.py):
+   Runs board-row OCR and cell-state extraction for all `data/example*` directories and writes logs to [.debug/](.debug/).
+
+Run them from the repository root:
+
+```bash
+uv run python tools/generate_synthetic_example_data.py
+uv run python tools/run_extract_example_data.py
+```
+
+The extraction tool writes OCR/cell-state logs and per-image debug boards under [.debug/](.debug/).
 
 ### Running the CLI Application
 
@@ -140,6 +158,19 @@ uv run strands_solver \
    -m data/example1/valid_moves.txt \
    --spangram-index 2 \
    --fake-mode light
+```
+
+Example with verbose output:
+```bash
+TESSDATA_PREFIX=/usr/share/tesseract-ocr/5/tessdata \
+uv run strands_solver \
+   --driver fake \
+   --allowed-words data/allowed_words.txt \
+   --board data/example1/board.txt \
+   --valid-moves data/example1/valid_moves.txt \
+   --spangram-index 2 \
+   --fake-mode light \
+   --verbose
 ```
 
 Note: appium mode requires a configured Appium session; otherwise the CLI reports `device_mode_not_ready`.

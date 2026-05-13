@@ -90,7 +90,7 @@ unfixable = []
   "D102",    # Allow missing docstring in public methods.
   "D103",    # Allow missing docstring in public functions.
   "D107",    # Allow missing docstring in __init__ methods.
-  "INP001",  # Test don't need to be part of a package.
+  "INP001",  # Tests don't need to be part of a package.
   "PLR2004", # Magic values are often fine in tests.
   "SLF001",  # Tests often need access to private members.
   "S101",    # Plain assert is standard Pytest style.

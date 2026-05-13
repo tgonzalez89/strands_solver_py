@@ -2,7 +2,7 @@
 
 from typing import TYPE_CHECKING
 
-from strands_solver.board_reader.board_reader_tesseract_open_cv import BoardReaderTesseractOpenCv
+from strands_solver.board_reader.board_reader_tesseract_open_cv import BoardReaderTesseractOpenCV
 from strands_solver.bot.bot_device import BotDevice
 from strands_solver.device.device_driver_fake import DeviceDriverFake
 
@@ -45,7 +45,7 @@ class BotDeviceFake(BotDevice):
         initial_board = self._device_driver_fake.initial_board
         super().__init__(
             driver=self._device_driver_fake,
-            reader=BoardReaderTesseractOpenCv(rows=len(initial_board), cols=len(initial_board[0])),
+            reader=BoardReaderTesseractOpenCV(rows=len(initial_board), cols=len(initial_board[0])),
         )
         self._validate_initial_ocr_matches_expected_board()
 

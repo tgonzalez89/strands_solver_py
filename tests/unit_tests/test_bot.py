@@ -62,6 +62,16 @@ class BotDeviceDouble(BotDevice):
         super().__init__(driver=self._driver, reader=self._reader)
 
 
+class LoggingBotFake(BotFake):
+    def __init__(self, board: list[str], valid_moves: list[list[BoardCoord]]) -> None:
+        super().__init__(board, valid_moves)
+        self.attempted_moves: list[list[BoardCoord]] = []
+
+    def apply_move(self, move: list[BoardCoord]) -> bool:
+        self.attempted_moves.append(move.copy())
+        return super().apply_move(move)
+
+
 def test_run_applies_valid_moves_from_direct_api() -> None:
     board = [
         "test",
@@ -156,6 +166,58 @@ def test_run_returns_empty_when_trie_has_no_candidates() -> None:
     bot = BotFake(board, [[(0, 0), (0, 1), (0, 2), (0, 3)]])
 
     assert bot.run(trie) == []
+
+
+def test_run_fallback_finds_move_without_dictionary_word() -> None:
+    board = [
+        "a###",
+        "#b##",
+        "##c#",
+        "###d",
+    ]
+    abcd_path: list[BoardCoord] = [(0, 0), (1, 1), (2, 2), (3, 3)]
+    trie = Trie.build_from_words(["zzzz"])
+    bot = BotFake(board, [abcd_path])
+
+    result = bot.run(trie)
+
+    assert result == [("abcd", abcd_path)]
+    assert bot.get_board() == ["####", "####", "####", "####"]
+
+
+def test_run_fallback_runs_after_dictionary_exhausted_with_spaces_left() -> None:
+    board = [
+        "test",
+        "a###",
+        "#b##",
+        "##cd",
+    ]
+    test_path: list[BoardCoord] = [(0, 0), (0, 1), (0, 2), (0, 3)]
+    abcd_path: list[BoardCoord] = [(1, 0), (2, 1), (3, 2), (3, 3)]
+    trie = Trie.build_from_words(["test"])
+    bot = BotFake(board, [test_path, abcd_path])
+
+    result = bot.run(trie)
+
+    assert result == [("test", test_path), ("abcd", abcd_path)]
+
+
+def test_run_fallback_respects_diagonal_walls_from_accepted_moves() -> None:
+    board = [
+        "a###",
+        "#be#",
+        "xfc#",
+        "ghxd",
+    ]
+    abcd_path: list[BoardCoord] = [(0, 0), (1, 1), (2, 2), (3, 3)]
+    crossing_path: list[BoardCoord] = [(1, 2), (2, 1), (3, 0), (3, 1)]
+    trie = Trie.build_from_words(["abcd"])
+    bot = LoggingBotFake(board, [abcd_path])
+
+    result = bot.run(trie)
+
+    assert result == [("abcd", abcd_path)]
+    assert crossing_path not in bot.attempted_moves
 
 
 def test_bot_direct_input_validates_move_paths() -> None:

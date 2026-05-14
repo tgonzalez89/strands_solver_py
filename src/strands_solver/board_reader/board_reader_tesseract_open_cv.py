@@ -82,6 +82,7 @@ class BoardReaderTesseractOpenCV(BoardReaderBase):
         self._cell_width: int = 0
         self._cell_centers: list[list[PixelCoord]] = []
         self._board_top_left: PixelCoord = (0, 0)
+        self._estimated_circle_diameter: int = CIRCLE_DIAMETER  # Estimated from calibration
         self._recalculate_geometry()
         self._tessdata_dir = tessdata_dir or os.environ.get("TESSDATA_PREFIX", TESSDATA_DIR)
 
@@ -101,6 +102,7 @@ class BoardReaderTesseractOpenCV(BoardReaderBase):
         self,
         top_left_cell_center: PixelCoord,
         bottom_right_cell_center: PixelCoord,
+        circle_diameter: int | None = None,
     ) -> None:
         """Set board corner cell centers and recompute geometry.
 
@@ -110,11 +112,24 @@ class BoardReaderTesseractOpenCV(BoardReaderBase):
         Args:
             top_left_cell_center: Pixel center of cell (0, 0).
             bottom_right_cell_center: Pixel center of cell (rows-1, cols-1).
+            circle_diameter: Optional circle diameter in pixels. If provided, overrides
+                the estimated diameter. Defaults to current estimated value.
 
         """
         self._top_left_cell_center = top_left_cell_center
         self._bottom_right_cell_center = bottom_right_cell_center
+        if circle_diameter is not None:
+            self._estimated_circle_diameter = circle_diameter
         self._recalculate_geometry()
+
+    def get_estimated_circle_diameter(self) -> int:
+        """Get the circle diameter (estimated during calibration or from defaults).
+
+        Returns:
+            Estimated circle diameter in pixels.
+
+        """
+        return self._estimated_circle_diameter
 
     def calibrate(
         self,
@@ -122,7 +137,7 @@ class BoardReaderTesseractOpenCV(BoardReaderBase):
         timeout_s: float = 30.0,
         poll_interval_s: float = 0.5,
     ) -> None:
-        """Interactively calibrate cell-corner coordinates using the device.
+        """Interactively calibrate cell-corner coordinates and circle diameter using the device.
 
         Prompts the user to tap the top-left and bottom-right board cells in turn.
         For each corner:
@@ -137,6 +152,9 @@ class BoardReaderTesseractOpenCV(BoardReaderBase):
         After both corners are captured, the internal geometry (cell width/height,
         cell centers, board top-left) is updated.
 
+        The circle diameter is estimated from the detected blobs at both corners
+        and averaged to produce a robust estimate.
+
         Args:
             driver: Device driver used to capture screenshots and send taps.
             timeout_s: Seconds to wait for the user to tap each corner.
@@ -150,6 +168,8 @@ class BoardReaderTesseractOpenCV(BoardReaderBase):
             ("TOP-LEFT", "_top_left_cell_center"),
             ("BOTTOM-RIGHT", "_bottom_right_cell_center"),
         ]
+
+        estimated_diameters: list[float] = []
 
         for corner_name, attr in corners:
             # Step 1: Wait until screen is clear of any selection.
@@ -167,40 +187,52 @@ class BoardReaderTesseractOpenCV(BoardReaderBase):
             # Step 3: Poll until exactly one blob appears.
             deadline = time.monotonic() + timeout_s
             center: PixelCoord | None = None
+            diameter: float | None = None
             while time.monotonic() < deadline:
                 time.sleep(poll_interval_s)
                 image = self._decode_image(driver.capture_screen())
-                blobs = self._find_selection_blobs(image)
-                if len(blobs) == 1:
-                    center = blobs[0]
+                blobs_with_diameter = self._find_selection_blobs_with_diameter(image)
+                if len(blobs_with_diameter) == 1:
+                    center, diameter = blobs_with_diameter[0]
                     break
 
             if center is None:
                 msg = f"Calibration timed out waiting for {corner_name} tap after {timeout_s:.0f}s"
                 raise TimeoutError(msg)
 
+            if diameter is not None:
+                estimated_diameters.append(diameter)
+                print(f"  -> Detected {corner_name} at {center}, diameter ≈ {diameter:.1f}px")
+            else:
+                print(f"  -> Detected {corner_name} at {center}")
+
             setattr(self, attr, center)
-            print(f"  -> Detected {corner_name} at {center}")
 
             # Step 4: Tap to deselect.
             driver.tap(center)
             time.sleep(poll_interval_s)
 
+        # Estimate circle diameter from both measurements and average them
+        if estimated_diameters:
+            self._estimated_circle_diameter = round(sum(estimated_diameters) / len(estimated_diameters))
+            print(f"Estimated circle diameter: {self._estimated_circle_diameter}px")
+
         self._recalculate_geometry()
         print("Calibration complete.")
 
     @staticmethod
-    def _find_selection_blobs(image: object) -> list[PixelCoord]:
-        """Locate blobs matching SELECTION_COLOR in a decoded image.
+    def _detect_selection_contours(image: object) -> list[tuple[PixelCoord, float]]:
+        """Detect SELECTION_COLOR blobs and return each blob's centroid and diameter.
 
-        Uses a color-range mask around SELECTION_COLOR (with ±4 tolerance per
-        channel) and contour detection to identify selected cells.
+        Applies a color-range mask around SELECTION_COLOR (±4 per channel),
+        morphological opening for noise removal, and contour filtering by area.
+        Diameter is estimated from the minimum enclosing circle of each contour.
 
         Args:
             image: Decoded OpenCV image (BGR, as returned by `_decode_image`).
 
         Returns:
-            List of (x, y) centroid coordinates for each detected blob.
+            List of ``((x, y), diameter_px)`` tuples for each passing contour.
 
         """
         image_matlike = cast("cv2.typing.MatLike", image)
@@ -221,7 +253,7 @@ class BoardReaderTesseractOpenCV(BoardReaderBase):
 
         # Filter by area: a cell circle of CIRCLE_DIAMETER px has area ≈ π*(D/2)².
         min_area = 3.14159 * (CIRCLE_DIAMETER / 2) ** 2 * 0.3
-        centers: list[PixelCoord] = []
+        blobs: list[tuple[PixelCoord, float]] = []
         for contour in contours:
             area = cv2.contourArea(contour)
             if area < min_area:
@@ -231,9 +263,36 @@ class BoardReaderTesseractOpenCV(BoardReaderBase):
                 continue
             cx = int(moment["m10"] / moment["m00"])
             cy = int(moment["m01"] / moment["m00"])
-            centers.append((cx, cy))
+            _, radius = cv2.minEnclosingCircle(contour)
+            blobs.append(((cx, cy), 2 * radius))
 
-        return centers
+        return blobs
+
+    @staticmethod
+    def _find_selection_blobs(image: object) -> list[PixelCoord]:
+        """Locate blobs matching SELECTION_COLOR in a decoded image.
+
+        Args:
+            image: Decoded OpenCV image (BGR, as returned by `_decode_image`).
+
+        Returns:
+            List of (x, y) centroid coordinates for each detected blob.
+
+        """
+        return [center for center, _ in BoardReaderTesseractOpenCV._detect_selection_contours(image)]
+
+    @staticmethod
+    def _find_selection_blobs_with_diameter(image: object) -> list[tuple[PixelCoord, float]]:
+        """Locate blobs matching SELECTION_COLOR and estimate their diameter.
+
+        Args:
+            image: Decoded OpenCV image (BGR, as returned by `_decode_image`).
+
+        Returns:
+            List of ((x, y), diameter) tuples for each detected blob.
+
+        """
+        return BoardReaderTesseractOpenCV._detect_selection_contours(image)
 
     def _decode_image(self, screenshot: bytes) -> object:
         """Decode screenshot bytes into an OpenCV BGR image.
@@ -354,7 +413,7 @@ class BoardReaderTesseractOpenCV(BoardReaderBase):
                 variables | {"tessedit_char_whitelist": TESSEDIT_CHAR_WHITELIST},
             )
         if not result:
-            msg = "OCR failed to properly extract the letters from the board image."
+            msg = f"OCR failed to properly extract the letters from the board image.\n{board_to_text(board, ' ')}"
             raise RuntimeError(msg)
 
         return board
@@ -459,8 +518,7 @@ class BoardReaderTesseractOpenCV(BoardReaderBase):
 
         return cell_centers
 
-    @staticmethod
-    def _extract_cell_patch(image: cv2.typing.MatLike, center: PixelCoord) -> cv2.typing.MatLike:
+    def _extract_cell_patch(self, image: cv2.typing.MatLike, center: PixelCoord) -> cv2.typing.MatLike:
         """Extract a patch of pixels around the cell center.
 
         Args:
@@ -471,7 +529,7 @@ class BoardReaderTesseractOpenCV(BoardReaderBase):
             Image patch containing the cell.
 
         """
-        img_cell_side = BoardReaderTesseractOpenCV._patch_image_side()
+        img_cell_side = self._patch_image_side()
         x, y = center
         x_start = max(x - img_cell_side // 2, 0)
         y_start = max(y - img_cell_side // 2, 0)
@@ -494,13 +552,12 @@ class BoardReaderTesseractOpenCV(BoardReaderBase):
         closest = BoardReaderTesseractOpenCV._classify_cell_color(cell_img)
         return PALETTE[closest]
 
-    @staticmethod
-    def _patch_image_side(factor: float = 0.9) -> int:
+    def _patch_image_side(self, factor: float = 0.9) -> int:
         """Calculate the side length of the square patch image extracted around the cell center."""
         # Patch is an image with the side length of a square inscribed inside the circle,
         # to avoid capturing any colors outside the circle.
         # Side is calculated as diameter * sqrt(2) / 2 (approximated as 0.7).
-        side = CIRCLE_DIAMETER * 7 // 10
+        side = self._estimated_circle_diameter * 7 // 10
         # Apply additional factor to ensure we are well within the circle and
         # not capturing any background colors on the corners of the inscribed square.
         side = int(side * factor)

@@ -3,6 +3,9 @@
 
 from __future__ import annotations
 
+import argparse
+import contextlib
+import io
 import shutil
 from dataclasses import dataclass
 from pathlib import Path
@@ -26,6 +29,24 @@ STATE_SYMBOL_TO_HIGHLIGHT = {
     "W": Highlight.WORD,
     "S": Highlight.SPANGRAM,
 }
+
+
+def parse_args() -> argparse.Namespace:
+    """Parse command-line arguments."""
+    parser = argparse.ArgumentParser(description=__doc__)
+    parser.add_argument(
+        "--verbose",
+        action="store_true",
+        help="Print internal calibration and OCR output that is suppressed by default.",
+    )
+    return parser.parse_args()
+
+
+def maybe_suppress_stdout(*, verbose: bool) -> contextlib.AbstractContextManager[io.StringIO | None]:
+    """Return a context manager that suppresses stdout unless verbose mode is enabled."""
+    if verbose:
+        return contextlib.nullcontext()
+    return contextlib.redirect_stdout(io.StringIO())
 
 
 def iter_example_dirs(data_dir: Path) -> list[Path]:
@@ -117,6 +138,54 @@ def read_reference_centers(example_dir: Path) -> dict[tuple[int, int], tuple[int
     return center_by_coord or None
 
 
+def read_reference_circle_diameter(example_dir: Path) -> int | None:
+    """Read ground-truth circle diameter from circle_diameter.txt if present.
+
+    Returns:
+        Circle diameter in pixels, or None if file missing.
+
+    """
+    diameter_path = example_dir / "circle_diameter.txt"
+    if not diameter_path.exists():
+        return None
+
+    text = diameter_path.read_text(encoding="utf-8").strip()
+    if not text:
+        return None
+
+    try:
+        return int(text)
+    except ValueError as error:
+        msg = f"Invalid value in {diameter_path}: expected integer diameter, got '{text}'"
+        raise ValueError(msg) from error
+
+
+def validate_circle_diameter(
+    estimated: int | None,
+    reference: int | None,
+    tolerance_px: int = 3,
+) -> tuple[str, str]:
+    """Compare estimated and reference circle diameters.
+
+    Returns:
+        Tuple (status, message) where status is PASS/FAIL/NA.
+
+    """
+    if reference is None:
+        return "NA", "No circle_diameter.txt reference"
+    if estimated is None:
+        return "NA", "No estimated circle diameter from calibration"
+
+    diff = abs(estimated - reference)
+    if diff <= tolerance_px:
+        return "PASS", f"Diameter validated: estimated={estimated}px, reference={reference}px, tol=±{tolerance_px}px"
+
+    return (
+        "FAIL",
+        f"Diameter mismatch: estimated={estimated}px, reference={reference}px, diff={diff}px, tol=±{tolerance_px}px",
+    )
+
+
 class ReplayDriver(DeviceDriver):
     """Device driver that replays a prerecorded screenshot sequence."""
 
@@ -150,11 +219,13 @@ class ReplayDriver(DeviceDriver):
 def try_calibrate_and_validate(
     reader: BoardReaderTesseractOpenCV,
     example_dir: Path,
-) -> tuple[bool, str]:
+    *,
+    verbose: bool = False,
+) -> CalibrationResult:
     """Attempt to calibrate reader from disk images and validate against centers.txt.
 
     Returns:
-        Tuple of (success, log_message).
+        CalibrationResult with status PASS/FAIL/NA and detail message.
 
     """
     clear_path = example_dir / "clear.png"
@@ -162,7 +233,7 @@ def try_calibrate_and_validate(
     bottom_right_path = example_dir / "bottom_right.png"
 
     if not (clear_path.exists() and top_left_path.exists() and bottom_right_path.exists()):
-        return True, ""  # No calibration frames available; skip silently
+        return CalibrationResult(status="NA", message="Calibration frames missing")
 
     # Load calibration frames
     clear_bytes = clear_path.read_bytes()
@@ -172,17 +243,18 @@ def try_calibrate_and_validate(
     # Run calibration via replay
     driver = ReplayDriver(screenshots=[clear_bytes, top_left_bytes, clear_bytes, bottom_right_bytes])
     try:
-        reader.calibrate(driver, timeout_s=2.0, poll_interval_s=0.0)
+        with maybe_suppress_stdout(verbose=verbose):
+            reader.calibrate(driver, timeout_s=2.0, poll_interval_s=0.0)
     except (TimeoutError, ValueError, RuntimeError) as err:
         msg = f"Calibration failed: {err}"
-        return False, msg
+        return CalibrationResult(status="FAIL", message=msg)
 
     # Try to validate against centers.txt
     rows = reader._rows  # noqa: SLF001
     cols = reader._cols  # noqa: SLF001
     reference_centers = read_reference_centers(example_dir)
     if reference_centers is None:
-        return True, "Calibration succeeded (no centers.txt for validation)"
+        return CalibrationResult(status="NA", message="Calibration succeeded but centers.txt is missing")
 
     # Compare calibrated corners vs reference
     tol = 3
@@ -196,10 +268,11 @@ def try_calibrate_and_validate(
 
     if tl_match and br_match:
         msg = f"Calibration validated: TL {tl_calib} vs {tl_ref}, BR {br_calib} vs {br_ref}"
-        return True, msg
+        estimated_diameter = reader.get_estimated_circle_diameter()
+        return CalibrationResult(status="PASS", message=msg, estimated_diameter_px=estimated_diameter)
 
     msg = f"Calibration mismatch: TL {tl_calib} vs {tl_ref}, BR {br_calib} vs {br_ref}"
-    return False, msg
+    return CalibrationResult(status="FAIL", message=msg)
 
 
 def to_symbol(state: Highlight) -> str:
@@ -303,17 +376,65 @@ class ImageExtractionResult:
     cell_error: Exception | None
 
 
+@dataclass
+class CalibrationResult:
+    """Hold calibration status and message for one example."""
+
+    status: str  # PASS | FAIL | NA
+    message: str
+    estimated_diameter_px: int | None = None
+
+
+@dataclass
+class ExampleResult:
+    """Hold final test statuses for one example."""
+
+    example_name: str
+    overall_status: str  # PASS | FAIL
+    ocr_status: str  # PASS | FAIL | NA
+    centers_status: str  # PASS | FAIL | NA
+    states_status: str  # PASS | FAIL | NA
+    diameter_status: str  # PASS | FAIL | NA
+
+
+def combine_statuses(statuses: list[str]) -> str:
+    """Combine statuses into one PASS/FAIL/NA summary."""
+    if not statuses:
+        return "NA"
+    if any(status == "FAIL" for status in statuses):
+        return "FAIL"
+    if all(status == "NA" for status in statuses):
+        return "NA"
+    if all(status == "PASS" for status in statuses if status != "NA"):
+        return "PASS"
+    return "FAIL"
+
+
+def format_status_with_count(status: str, passing_count: int, total_count: int) -> str:
+    """Format one summary status with pass/total counts when applicable."""
+    if status == "NA":
+        return "NA"
+    return f"{status} ({passing_count}/{total_count})"
+
+
 def extract_image_data(
     reader: BoardReaderTesseractOpenCV,
     image_path: Path,
     example_name: str,
+    *,
+    verbose: bool = False,
 ) -> ImageExtractionResult:
-    """Extract board rows and cell states for one screenshot path."""
-    image: object | None = None
+    """Extract board rows and cell states for one image.
+
+    Returns:
+        ImageExtractionResult with extracted values and captured errors.
+
+    """
     board_error: Exception | None = None
     cell_error: Exception | None = None
     board_rows: list[str] = []
     cell_states: list[list[Highlight]] | None = None
+    image = None
 
     try:
         screenshot = image_path.read_bytes()
@@ -331,16 +452,21 @@ def extract_image_data(
         )
 
     try:
-        cell_states = reader._extract_cell_states(image)  # noqa: SLF001
+        with maybe_suppress_stdout(verbose=verbose):
+            cell_states = reader._extract_cell_states(image)  # noqa: SLF001
     except (OSError, ValueError, RuntimeError) as error:
         cell_error = error
 
     try:
-        board_rows = reader._extract_board_rows(image)  # noqa: SLF001
-        debug_image_path = OUTPUT_DIR / f"{example_name}_{image_path.stem}_debug_board.png"
-        copy_debug_image(debug_image_path)
+        with maybe_suppress_stdout(verbose=verbose):
+            board_rows = reader._extract_board_rows(image)  # noqa: SLF001
     except (OSError, ValueError, RuntimeError) as error:
         board_error = error
+
+    # Always copy debug image for diagnostic purposes, regardless of extraction success
+    debug_image_path = OUTPUT_DIR / f"{example_name}_{image_path.stem}_debug_board.png"
+    with contextlib.suppress(RuntimeError):
+        copy_debug_image(debug_image_path)
 
     return ImageExtractionResult(
         board_rows=board_rows,
@@ -373,7 +499,7 @@ def append_board_result(
     board_log_lines.append(image_path.name)
     board_log_lines.append(f"ERROR: {extraction.board_error}")
     board_log_lines.append("")
-    return "ERROR", str(extraction.board_error)
+    return "FAIL", str(extraction.board_error)
 
 
 def append_cell_result(
@@ -406,60 +532,81 @@ def append_cell_result(
 
     cell_log_lines.append(f"ERROR: {extraction.cell_error}")
     cell_log_lines.append("")
-    return "ERROR", str(extraction.cell_error)
+    return "FAIL", str(extraction.cell_error)
 
 
-def process_example_dir(example_dir: Path) -> tuple[int, int, int, int]:
-    """Process one example directory.
-
-    Returns:
-        Tuple of (successful_extractions, total_extractions, successful_calibrations, total_calibration_attempts).
-
-    """
-    example_name = example_dir.name
-    image_paths = iter_board_images(example_dir)
-    if not image_paths:
-        print(f"SKIP {example_name}: no board images found")
-        return 0, 0, 0, 0
-
-    try:
-        reference_rows = read_reference_board(example_dir)
-        rows, cols = len(reference_rows), len(reference_rows[0])
-    except (OSError, ValueError) as err:
-        print(f"SKIP {example_name}: {err}")
-        return 0, 0, 0, 0
-
-    expected_cell_states = read_reference_cell_states(example_dir, rows, cols)
-    reader = BoardReaderTesseractOpenCV(rows=rows, cols=cols)
-
-    # Try calibration if frames exist
-    calib_success, calib_msg = try_calibrate_and_validate(reader, example_dir)
-    calib_attempts = 1 if (example_dir / "clear.png").exists() else 0
-    calib_count = 1 if calib_success and calib_attempts == 1 else 0
-
-    if calib_msg:
-        if calib_success:
-            print(f"  {example_name}: {calib_msg}")
-        else:
-            print(f"  {example_name}: CALIB FAIL: {calib_msg}")
-
+def _init_example_logs(
+    *,
+    example_name: str,
+    calibration: CalibrationResult,
+    diameter_status: str,
+    diameter_message: str,
+) -> tuple[Path, Path, Path, list[str], list[str], list[str]]:
+    """Create per-example log paths and initial log lines."""
     board_log_path = OUTPUT_DIR / f"{example_name}_board_rows.log"
     cell_log_path = OUTPUT_DIR / f"{example_name}_cell_states.log"
     calib_log_path = OUTPUT_DIR / f"{example_name}_calibration.log"
     board_log_lines: list[str] = []
     cell_log_lines: list[str] = []
-    calib_log_lines: list[str] = []
+    calib_log_lines = [
+        f"Calibration attempt for {example_name}",
+        f"Status: {calibration.status}",
+        f"Message: {calibration.message}",
+        f"Estimated diameter: {calibration.estimated_diameter_px}",
+        f"Diameter status: {diameter_status}",
+        f"Diameter message: {diameter_message}",
+        "",
+    ]
+    return board_log_path, cell_log_path, calib_log_path, board_log_lines, cell_log_lines, calib_log_lines
 
-    # Write calibration log if frames were present
-    if calib_attempts > 0:
-        calib_log_lines.append(f"Calibration attempt for {example_name}")
-        calib_log_lines.append(f"Status: {'PASS' if calib_success else 'FAIL'}")
-        calib_log_lines.append(f"Message: {calib_msg}")
-        calib_log_lines.append("")
 
-    success_count = 0
+def process_example_dir(example_dir: Path, *, verbose: bool = False) -> ExampleResult | None:
+    """Process one example directory and print structured test output."""
+    example_name = example_dir.name
+    image_paths = iter_board_images(example_dir)
+    if not image_paths:
+        print(f"\n=== Example: {example_name} ===")
+        print("Result: SKIP (no board images found)")
+        return None
+
+    try:
+        reference_rows = read_reference_board(example_dir)
+        rows, cols = len(reference_rows), len(reference_rows[0])
+    except (OSError, ValueError) as err:
+        print(f"\n=== Example: {example_name} ===")
+        print(f"Result: SKIP ({err})")
+        return None
+
+    expected_cell_states = read_reference_cell_states(example_dir, rows, cols)
+    reader = BoardReaderTesseractOpenCV(rows=rows, cols=cols)
+
+    calibration = try_calibrate_and_validate(reader, example_dir, verbose=verbose)
+    reference_diameter = read_reference_circle_diameter(example_dir)
+    diameter_status, diameter_message = validate_circle_diameter(
+        calibration.estimated_diameter_px,
+        reference_diameter,
+    )
+
+    print(f"\n=== Example: {example_name} ===")
+    print(f"Images: {len(image_paths)}")
+    print(f"  Centers: {calibration.status} ({calibration.message})")
+    print(f"  Diameter: {diameter_status} ({diameter_message})")
+
+    board_log_path, cell_log_path, calib_log_path, board_log_lines, cell_log_lines, calib_log_lines = (
+        _init_example_logs(
+            example_name=example_name,
+            calibration=calibration,
+            diameter_status=diameter_status,
+            diameter_message=diameter_message,
+        )
+    )
+
+    ocr_statuses: list[str] = []
+    state_statuses: list[str] = []
+
     for image_path in image_paths:
-        extraction = extract_image_data(reader, image_path, example_name)
+        print(f"  Image: {image_path.name}")
+        extraction = extract_image_data(reader, image_path, example_name, verbose=verbose)
 
         ocr_status, ocr_score_text = append_board_result(
             board_log_lines,
@@ -467,6 +614,8 @@ def process_example_dir(example_dir: Path) -> tuple[int, int, int, int]:
             extraction,
             reference_rows,
         )
+        ocr_statuses.append(ocr_status)
+        print(f"    OCR(board): {ocr_status} ({ocr_score_text})")
 
         cell_status, cell_score_text = append_cell_result(
             cell_log_lines,
@@ -474,24 +623,52 @@ def process_example_dir(example_dir: Path) -> tuple[int, int, int, int]:
             extraction,
             expected_cell_states,
         )
+        if expected_cell_states is not None:
+            state_statuses.append(cell_status)
+        print(f"    States: {cell_status} ({cell_score_text})")
 
-        print(
-            f"{ocr_status} OCR {example_name}/{image_path.name} {ocr_score_text}; {cell_status} CELL {cell_score_text}"
-        )
+    ocr_overall = combine_statuses(ocr_statuses)
+    centers_overall = calibration.status
+    states_overall = "NA" if expected_cell_states is None else combine_statuses(state_statuses)
 
-        if extraction.board_error is None and extraction.cell_error is None:
-            success_count += 1
+    ocr_pass_count = sum(1 for status in ocr_statuses if status == "PASS")
+    ocr_total_count = len(ocr_statuses)
+    states_pass_count = sum(1 for status in state_statuses if status == "PASS")
+    states_total_count = len(state_statuses)
+
+    overall_status = (
+        "FAIL"
+        if any(status == "FAIL" for status in [ocr_overall, centers_overall, states_overall, diameter_status])
+        else "PASS"
+    )
+
+    print(
+        "  Example Summary: "
+        f"Centers={centers_overall}, "
+        f"Diameter={diameter_status}, "
+        f"OCR={format_status_with_count(ocr_overall, ocr_pass_count, ocr_total_count)}, "
+        f"States={format_status_with_count(states_overall, states_pass_count, states_total_count)}"
+    )
+    print(f"  Overall: {overall_status}")
 
     board_log_path.write_text("\n".join(board_log_lines), encoding="utf-8")
     cell_log_path.write_text("\n".join(cell_log_lines), encoding="utf-8")
-    if calib_log_lines:
-        calib_log_path.write_text("\n".join(calib_log_lines), encoding="utf-8")
+    calib_log_path.write_text("\n".join(calib_log_lines), encoding="utf-8")
 
-    return success_count, len(image_paths), calib_count, calib_attempts
+    return ExampleResult(
+        example_name=example_name,
+        overall_status=overall_status,
+        ocr_status=ocr_overall,
+        centers_status=centers_overall,
+        states_status=states_overall,
+        diameter_status=diameter_status,
+    )
 
 
 def main() -> int:
     """Process all example directories under `data/`."""
+    args = parse_args()
+
     if not DATA_DIR.exists() or not DATA_DIR.is_dir():
         print(f"Input directory not found: {DATA_DIR}")
         return 1
@@ -503,27 +680,43 @@ def main() -> int:
         print(f"No example directories found in {DATA_DIR}")
         return 1
 
-    total_success = 0
-    total_images = 0
-    total_calib_success = 0
-    total_calib_attempts = 0
+    results: list[ExampleResult] = []
+    skipped_examples = 0
 
     try:
         for example_dir in example_dirs:
-            success_count, image_count, calib_success, calib_attempts = process_example_dir(example_dir)
-            total_success += success_count
-            total_images += image_count
-            total_calib_success += calib_success
-            total_calib_attempts += calib_attempts
+            result = process_example_dir(example_dir, verbose=args.verbose)
+            if result is None:
+                skipped_examples += 1
+            else:
+                results.append(result)
     finally:
         if TEMP_DEBUG_IMAGE.exists():
             TEMP_DEBUG_IMAGE.unlink()
 
-    print(f"Processed {total_success}/{total_images} images across {len(example_dirs)} example directories")
-    if total_calib_attempts > 0:
-        print(f"Calibration: {total_calib_success}/{total_calib_attempts} examples")
-    calib_all_pass = total_calib_attempts in (0, total_calib_success)
-    return 0 if total_success == total_images and calib_all_pass else 1
+    pass_examples = sum(1 for result in results if result.overall_status == "PASS")
+    fail_examples = sum(1 for result in results if result.overall_status == "FAIL")
+
+    def summarize_test(statuses: list[str]) -> tuple[int, int, int]:
+        return (
+            sum(1 for status in statuses if status == "PASS"),
+            sum(1 for status in statuses if status == "FAIL"),
+            sum(1 for status in statuses if status == "NA"),
+        )
+
+    ocr_pass, ocr_fail, ocr_na = summarize_test([result.ocr_status for result in results])
+    centers_pass, centers_fail, centers_na = summarize_test([result.centers_status for result in results])
+    diameter_pass, diameter_fail, diameter_na = summarize_test([result.diameter_status for result in results])
+    states_pass, states_fail, states_na = summarize_test([result.states_status for result in results])
+
+    print("\n=== Final Summary ===")
+    print(f"Examples: PASS={pass_examples}, FAIL={fail_examples}, SKIP={skipped_examples}, TOTAL={len(example_dirs)}")
+    print(f"OCR(board): PASS={ocr_pass}, FAIL={ocr_fail}, NA={ocr_na}")
+    print(f"Centers: PASS={centers_pass}, FAIL={centers_fail}, NA={centers_na}")
+    print(f"Diameter: PASS={diameter_pass}, FAIL={diameter_fail}, NA={diameter_na}")
+    print(f"States: PASS={states_pass}, FAIL={states_fail}, NA={states_na}")
+
+    return 0 if fail_examples == 0 else 1
 
 
 if __name__ == "__main__":

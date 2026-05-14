@@ -49,6 +49,7 @@ def test_integration_calibrate_updates_reader_cell_centers_from_detected_selecti
 
     expected_top_left = centers[(0, 0)]
     expected_bottom_right = centers[(7, 5)]
+    expected_circle_diameter = 2 * int(min(153.0, 148.5) * 0.42)
 
     # Expected capture sequence by calibrate():
     # 1) ensure clear before top-left prompt
@@ -74,5 +75,6 @@ def test_integration_calibrate_updates_reader_cell_centers_from_detected_selecti
     assert abs(calibrated_top_left[1] - expected_top_left[1]) <= 3
     assert abs(calibrated_bottom_right[0] - expected_bottom_right[0]) <= 3
     assert abs(calibrated_bottom_right[1] - expected_bottom_right[1]) <= 3
+    assert abs(reader.get_estimated_circle_diameter() - expected_circle_diameter) <= 3
     assert driver.taps == [expected_top_left, expected_bottom_right]
     assert driver._screenshots == []

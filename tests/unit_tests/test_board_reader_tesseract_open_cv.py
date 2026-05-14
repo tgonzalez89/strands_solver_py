@@ -15,12 +15,42 @@ def test_reader_init_raises_when_extras_unavailable(monkeypatch: pytest.MonkeyPa
 
 
 def test_patch_image_side_returns_even_length() -> None:
-    side_default = board_reader_module.BoardReaderTesseractOpenCV._patch_image_side()
-    side_smaller = board_reader_module.BoardReaderTesseractOpenCV._patch_image_side(0.5)
+    reader = board_reader_module.BoardReaderTesseractOpenCV(rows=8, cols=6)
+    side_default = reader._patch_image_side()
+    side_smaller = reader._patch_image_side(0.5)
 
     assert side_default % 2 == 0
     assert side_smaller % 2 == 0
     assert side_smaller < side_default
+
+
+def test_patch_image_side_uses_estimated_circle_diameter() -> None:
+    reader = board_reader_module.BoardReaderTesseractOpenCV(rows=8, cols=6)
+    reader.set_cell_corner_centers((155, 752), (920, 1791), circle_diameter=80)
+
+    side = reader._patch_image_side()
+
+    # side = int((diameter * 0.7) * factor), rounded down to even integer
+    assert side == 50
+
+
+def test_find_selection_blobs_with_diameter_estimates_circle_size() -> None:
+    reader = board_reader_module.BoardReaderTesseractOpenCV(rows=8, cols=6)
+    image = np.zeros((240, 240, 3), dtype=np.uint8)
+
+    # Draw selection-color circle in BGR as the detector expects OpenCV BGR input.
+    r, g, b = board_reader_module.SELECTION_COLOR
+    bgr = (b, g, r)
+    cv2_any = cast("Any", board_reader_module).cv2
+    cv2_any.circle(image, (120, 120), 48, bgr, -1)
+
+    blobs = reader._find_selection_blobs_with_diameter(image)
+
+    assert len(blobs) == 1
+    (cx, cy), diameter = blobs[0]
+    assert abs(cx - 120) <= 2
+    assert abs(cy - 120) <= 2
+    assert abs(diameter - 96) <= 6
 
 
 def test_classify_cell_color_and_state_detect_word_color() -> None:

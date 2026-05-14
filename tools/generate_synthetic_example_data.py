@@ -30,6 +30,8 @@ class RenderExampleSpec:
     spangram_coords: set[tuple[int, int]]
     selection_coords: set[tuple[int, int]]
     expected_symbols: list[list[str]]
+    config: RenderConfig | None = None
+    circle_diameter_px: int | None = None
 
 
 def build_baseline_board_rows() -> list[str]:
@@ -98,6 +100,17 @@ def write_centers_file(example_dir: Path, centers: dict[tuple[int, int], tuple[i
     (example_dir / "centers.txt").write_text("\n".join(lines) + "\n", encoding="utf-8")
 
 
+def write_circle_diameter_file(example_dir: Path, diameter_px: int) -> None:
+    """Write `circle_diameter.txt` with the ground-truth circle diameter.
+
+    Args:
+        example_dir: Target example directory.
+        diameter_px: Circle diameter in pixels.
+
+    """
+    (example_dir / "circle_diameter.txt").write_text(str(diameter_px) + "\n", encoding="utf-8")
+
+
 def render_example(
     example_dir: Path,
     board_rows: list[str],
@@ -125,6 +138,9 @@ def render_example(
     write_board_file(example_dir, board_rows)
     write_cell_states_file(example_dir, spec.expected_symbols)
 
+    # Use provided config or default
+    config = spec.config or RenderConfig()
+
     # Render main screenshot with original spec
     png_bytes, centers = render_board_png(
         board_rows,
@@ -132,7 +148,7 @@ def render_example(
         word_coords=spec.word_coords,
         spangram_coords=spec.spangram_coords,
         selection_coords=spec.selection_coords,
-        config=RenderConfig(),
+        config=config,
     )
     (example_dir / spec.image_name).write_bytes(png_bytes)
 
@@ -143,7 +159,7 @@ def render_example(
         word_coords=spec.word_coords,
         spangram_coords=spec.spangram_coords,
         selection_coords=set(),
-        config=RenderConfig(),
+        config=config,
     )
     (example_dir / "clear.png").write_bytes(clear_bytes)
 
@@ -156,7 +172,7 @@ def render_example(
         word_coords=tl_word_coords,
         spangram_coords=tl_spangram_coords,
         selection_coords={(0, 0)},
-        config=RenderConfig(),
+        config=config,
     )
     (example_dir / "top_left.png").write_bytes(top_left_bytes)
 
@@ -170,12 +186,165 @@ def render_example(
         word_coords=br_word_coords,
         spangram_coords=br_spangram_coords,
         selection_coords={br_coord},
-        config=RenderConfig(),
+        config=config,
     )
     (example_dir / "bottom_right.png").write_bytes(bottom_right_bytes)
 
     # Write all cell centers for validation
     write_centers_file(example_dir, centers)
+
+    # Write ground-truth circle diameter for validation.
+    # Renderer computes radius with int(min(cell_w, cell_h) * ratio), so mirror that logic.
+    effective_circle_diameter_px = (
+        spec.circle_diameter_px
+        if spec.circle_diameter_px is not None
+        else 2 * int(min(config.cell_width_px, config.cell_height_px) * config.cell_radius_ratio)
+    )
+    write_circle_diameter_file(example_dir, effective_circle_diameter_px)
+
+
+def _fit_board_to_bounds(
+    width: int,
+    height: int,
+    board_aspect_ratio: float,
+    max_board_fill_ratio: float,
+) -> tuple[float, float]:
+    """Compute the largest board that fits inside max fill bounds."""
+    max_board_width = width * max_board_fill_ratio
+    max_board_height = height * max_board_fill_ratio
+
+    if max_board_width / board_aspect_ratio <= max_board_height:
+        fit_board_width = max_board_width
+        fit_board_height = fit_board_width / board_aspect_ratio
+    else:
+        fit_board_height = max_board_height
+        fit_board_width = fit_board_height * board_aspect_ratio
+
+    return fit_board_width, fit_board_height
+
+
+def _choose_board_position(
+    rng: random.Random,
+    image_size: tuple[int, int],
+    board_size: tuple[float, float],
+    image_margin_ratio: float,
+) -> tuple[int, int]:
+    """Choose board top-left position fully in-bounds with preferred margin."""
+    width, height = image_size
+    board_width, board_height = board_size
+    preferred_margin_x = int(width * image_margin_ratio)
+    preferred_margin_y = int(height * image_margin_ratio)
+    horizontal_slack = max(0, round(width - board_width))
+    vertical_slack = max(0, round(height - board_height))
+
+    min_left = min(preferred_margin_x, horizontal_slack)
+    min_top = min(preferred_margin_y, vertical_slack)
+    max_left = max(min_left, horizontal_slack - preferred_margin_x)
+    max_top = max(min_top, vertical_slack - preferred_margin_y)
+
+    left_margin = rng.randint(min_left, max_left) if max_left > min_left else min_left
+    top_margin = rng.randint(min_top, max_top) if max_top > min_top else min_top
+    return left_margin, top_margin
+
+
+def generate_randomized_render_config(rng: random.Random) -> tuple[RenderConfig, int]:
+    """Generate a randomized RenderConfig to simulate diverse devices.
+
+        Randomizes image geometry first, then derives board and cell geometry in raw
+        pixels so the full board always fits in-bounds with meaningful variation.
+
+        Strategy:
+        - Choose a base image resolution where the smaller dimension is 1000-2000px.
+        - Choose an image aspect ratio between 1:2 and 2:1.
+        - Choose a near-square cell aspect ratio between 1:1.25 and 1.25:1.
+        - Size the board to fit within 50%-95% of the image where possible, while
+            always respecting the 95% max-fit constraint.
+        - Place the board with a 2.5% image margin when possible.
+        - Derive circle/font ratios from pixel targets relative to cell size.
+
+    Args:
+        rng: Deterministic pseudo-random generator.
+
+    Returns:
+        Tuple containing:
+        - A randomized RenderConfig instance with validated bounds.
+        - The circle diameter in pixels (ground truth for the rendered selection circles).
+
+    """
+    image_margin_ratio = 0.025
+    min_board_fill_ratio = 0.70
+    max_board_fill_ratio = 0.95
+
+    # Step 1: Choose image size from smaller dimension + aspect ratio.
+    base_resolution = rng.randint(1000, 2000)
+    image_aspect_ratio = rng.uniform(0.5, 2.0)
+    if image_aspect_ratio >= 1.0:
+        width = int(base_resolution * image_aspect_ratio)
+        height = base_resolution
+    else:
+        width = base_resolution
+        height = int(base_resolution / image_aspect_ratio)
+
+    # Step 2: Choose a near-square cell aspect ratio and derive board aspect.
+    cell_aspect_ratio = rng.uniform(0.9, 1.1)  # width / height
+    board_aspect_ratio = (COLS * cell_aspect_ratio) / ROWS
+
+    # Step 3: Compute the largest board that fits inside the 95% bounds.
+    fit_board_width, fit_board_height = _fit_board_to_bounds(
+        width,
+        height,
+        board_aspect_ratio,
+        max_board_fill_ratio,
+    )
+
+    # Step 4: Randomly size the board, keeping at least MIN_BOARD_FILL_RATIO% fill when possible.
+    min_board_width = width * min_board_fill_ratio
+    min_board_height = height * min_board_fill_ratio
+
+    min_fill_scale_width = min_board_width / fit_board_width
+    min_fill_scale_height = min_board_height / fit_board_height
+    min_fill_scale = max(min_fill_scale_width, min_fill_scale_height)
+
+    board_scale = rng.uniform(min_fill_scale, 1.0) if min_fill_scale <= 1.0 else 1.0
+
+    board_width = fit_board_width * board_scale
+    board_height = fit_board_height * board_scale
+
+    # Step 5: Derive cell dimensions from board size.
+    cell_width_px = board_width / COLS
+    cell_height_px = board_height / ROWS
+
+    # Step 6: Place the board fully in-bounds with a preferred 2.5% margin.
+    left_margin, top_margin = _choose_board_position(
+        rng,
+        (width, height),
+        (board_width, board_height),
+        image_margin_ratio,
+    )
+
+    # Step 7: Circle diameter and font size as ratios of the smaller cell dimension.
+    min_cell_dimension = min(cell_width_px, cell_height_px)
+    min_circle_diameter_px = 0.60 * min_cell_dimension
+    max_circle_diameter_px = 0.90 * min_cell_dimension
+    circle_diameter_px = rng.uniform(min_circle_diameter_px, max_circle_diameter_px)
+    font_size_px = rng.uniform(0.35 * min_cell_dimension, 0.40 * min_cell_dimension)
+
+    cell_radius_ratio = (circle_diameter_px / 2.0) / min_cell_dimension
+    font_size_ratio = font_size_px / min_cell_dimension
+
+    config = RenderConfig(
+        width=width,
+        height=height,
+        board_left_px=left_margin,
+        board_top_px=top_margin,
+        cell_width_px=cell_width_px,
+        cell_height_px=cell_height_px,
+        cell_radius_ratio=cell_radius_ratio,
+        font_size_ratio=font_size_ratio,
+    )
+
+    # Return the config and the ground-truth circle diameter in pixels
+    return config, round(circle_diameter_px)
 
 
 def make_uniform_symbols(symbol: str) -> list[list[str]]:
@@ -268,7 +437,7 @@ def generate_baseline_cases() -> None:
         )
 
 
-def generate_mixed_cases(count: int = 12, seed: int = 20260513) -> None:
+def generate_mixed_cases(count: int = 16, seed: int = 20260513) -> None:
     """Generate mixed-highlight synthetic examples with deterministic randomness.
 
     Args:
@@ -308,6 +477,7 @@ def generate_mixed_cases(count: int = 12, seed: int = 20260513) -> None:
         )
 
         mode = "light" if idx % 2 == 0 else "dark"
+        randomized_config, circle_diameter_px = generate_randomized_render_config(rng)
         render_example(
             example_dir,
             board_rows,
@@ -318,6 +488,8 @@ def generate_mixed_cases(count: int = 12, seed: int = 20260513) -> None:
                 spangram_coords=spangram_coords,
                 selection_coords=selection_coords,
                 expected_symbols=expected_symbols,
+                config=randomized_config,
+                circle_diameter_px=circle_diameter_px,
             ),
         )
 

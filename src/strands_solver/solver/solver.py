@@ -3,7 +3,7 @@
 from dataclasses import dataclass, field
 from typing import Self
 
-from strands_solver.util.util import BLOCKED_CELL, MIN_WORD_LEN, BoardCoord
+from strands_solver.util.util import BLOCKED_CELL, MIN_WORD_LEN, BoardCoord, coords_to_word
 
 
 def get_neighbor_coords(board: list[str], row: int, col: int) -> list[BoardCoord]:
@@ -201,6 +201,31 @@ class Trie:
 
         node.is_word = True
 
+    @staticmethod
+    def _rank_candidate_paths(board: list[str], candidate_paths: list[list[BoardCoord]]) -> list[list[BoardCoord]]:
+        """Rank and deduplicate candidate paths.
+
+        Heuristics:
+        - Keep only one path per word (deduplicate repeated words).
+        - Prefer longer words first.
+        - For equal length, prefer words with more unique letters.
+        - Use lexical tie-breaks for deterministic ordering.
+
+        """
+        best_path_by_word: dict[str, list[BoardCoord]] = {}
+
+        for path in candidate_paths:
+            word = coords_to_word(board, path)
+            existing_path = best_path_by_word.get(word)
+            if existing_path is None or tuple(path) < tuple(existing_path):
+                best_path_by_word[word] = path
+
+        ranked_candidates = list(best_path_by_word.items())
+        ranked_candidates.sort(
+            key=lambda item: (-len(item[0]), -len(set(item[0])), item[0], tuple(item[1])),
+        )
+        return [path for _, path in ranked_candidates]
+
     def find_all_word_paths(self, board: list[str]) -> list[list[BoardCoord]]:
         """Find all valid trie word paths in the given board.
 
@@ -222,4 +247,4 @@ class Trie:
                 start_coord = (row_idx, col_idx)
                 start_node.find_word_paths(board, [start_coord], found_paths)
 
-        return found_paths
+        return self._rank_candidate_paths(board, found_paths)

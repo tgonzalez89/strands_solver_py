@@ -54,7 +54,10 @@ def test_trie_finds_diagonal_word_path() -> None:
 
     paths = trie.find_all_word_paths(board)
 
-    assert [(0, 0), (1, 1), (2, 2), (3, 3)] in paths
+    assert tuple(paths[0]) in {
+        ((0, 0), (1, 1), (2, 2), (3, 3)),
+        ((0, 0), (1, 1), (2, 2), (1, 3)),
+    }
 
 
 def test_trie_discards_self_crossing_path() -> None:
@@ -105,6 +108,20 @@ def test_trie_returns_both_prefix_and_longer_word_paths() -> None:
 
     assert [(0, 0), (0, 1), (0, 2), (0, 3)] in paths
     assert [(0, 0), (0, 1), (0, 2), (0, 3), (0, 4)] in paths
+
+
+def test_trie_deduplicates_same_word_by_lexical_path() -> None:
+    board = [
+        "test",
+        "test",
+        "abcd",
+        "efgh",
+    ]
+    trie = Trie.build_from_words(["test"])
+
+    paths = trie.find_all_word_paths(board)
+
+    assert paths == [[(0, 0), (0, 1), (0, 2), (0, 3)]]
 
 
 def test_trie_rejects_word_that_leaves_too_small_island() -> None:

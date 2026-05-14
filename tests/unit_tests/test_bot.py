@@ -3,7 +3,6 @@ from typing import TYPE_CHECKING
 import pytest
 
 from strands_solver.board_reader.board_reader import BoardReader, BoardState, Highlight
-from strands_solver.bot.bot import Bot
 from strands_solver.bot.bot_device import BotDevice
 from strands_solver.bot.bot_fake import BotFake
 from strands_solver.device.device_driver import DeviceDriver
@@ -252,18 +251,3 @@ def test_run_prioritizes_longer_words_first() -> None:
     result = bot.run(trie)
 
     assert result[0] == ("tests", tests_path)
-
-
-def test_rank_candidate_paths_deduplicates_same_word() -> None:
-    board = [
-        "test",
-        "test",
-        "abcd",
-        "efgh",
-    ]
-    path_top: list[BoardCoord] = [(0, 0), (0, 1), (0, 2), (0, 3)]
-    path_bottom: list[BoardCoord] = [(1, 0), (1, 1), (1, 2), (1, 3)]
-
-    ranked = Bot._rank_candidate_paths(board, [path_bottom, path_top])
-
-    assert [word for word, _ in ranked] == ["test"]

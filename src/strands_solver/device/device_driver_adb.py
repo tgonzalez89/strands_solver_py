@@ -94,6 +94,19 @@ class DeviceDriverADB(DeviceDriver):
 
         return screenshot_bytes
 
+    def tap(self, coord: PixelCoord) -> None:
+        """Tap a single pixel coordinate on the device.
+
+        Args:
+            coord: Pixel coordinate to tap.
+
+        Raises:
+            NotImplementedError: If adb command execution fails.
+
+        """
+        x, y = coord
+        self._run_adb_command(["shell", "input", "tap", str(x), str(y)])
+
     def execute_path(self, pixel_path: list[PixelCoord]) -> None:
         """Execute a board path as a sequence of taps followed by a confirmation tap.
 
@@ -116,10 +129,9 @@ class DeviceDriverADB(DeviceDriver):
 
         delay_s = self._tap_delay_ms / 1000.0
 
-        for x, y in pixel_path:
-            self._run_adb_command(["shell", "input", "tap", str(x), str(y)])
+        for coord in pixel_path:
+            self.tap(coord)
             time.sleep(delay_s)
 
         # Confirm by tapping the last cell a second time.
-        last_x, last_y = pixel_path[-1]
-        self._run_adb_command(["shell", "input", "tap", str(last_x), str(last_y)])
+        self.tap(pixel_path[-1])

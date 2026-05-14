@@ -56,9 +56,11 @@ def main(argv: list[str] | None = None) -> int:
         tap_delay_ms=args.tap_delay_ms,
         command_timeout_s=args.adb_timeout_s,
     )
+    reader = BoardReaderTesseractOpenCV(tessdata_dir=args.tessdata_dir or None)
+    reader.calibrate(driver)
     bot = BotDevice(
         driver=driver,
-        reader=BoardReaderTesseractOpenCV(tessdata_dir=args.tessdata_dir or None),
+        reader=reader,
     )
     try:
         successful_moves = bot.run(trie, verbose=args.verbose)

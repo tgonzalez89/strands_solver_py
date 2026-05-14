@@ -80,6 +80,25 @@ class DeviceDriverFake(DeviceDriver):
         """Return the immutable initial board configured for this driver."""
         return self._initial_board.copy()
 
+    def corner_cell_centers(self) -> tuple[PixelCoord, PixelCoord]:
+        """Return top-left and bottom-right rendered cell centers.
+
+        Returns:
+            Tuple of ((0, 0) center, (rows-1, cols-1) center).
+
+        """
+        if self._cached_centers is None:
+            self.capture_screen()
+        if self._cached_centers is None:
+            msg = "unable to resolve rendered cell centers"
+            raise ValueError(msg)
+
+        row_count = len(self._board)
+        col_count = len(self._board[0])
+        top_left = self._cached_centers[(0, 0)]
+        bottom_right = self._cached_centers[(row_count - 1, col_count - 1)]
+        return top_left, bottom_right
+
     def capture_screen(self) -> bytes:
         """Generate PNG bytes for current board-state snapshot.
 
@@ -143,3 +162,11 @@ class DeviceDriverFake(DeviceDriver):
             highlight_coords.add((row_idx, col_idx))
 
         self._is_dirty = True
+
+    def tap(self, coord: PixelCoord) -> None:
+        """No-op tap for the fake driver.
+
+        Args:
+            coord: Pixel coordinate to tap (ignored).
+
+        """

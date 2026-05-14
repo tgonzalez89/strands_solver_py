@@ -45,13 +45,16 @@ class BotDeviceFake(BotDevice):
             render_config=render_config,
         )
         initial_board = self._device_driver_fake.initial_board
+        reader = BoardReaderTesseractOpenCV(
+            rows=len(initial_board),
+            cols=len(initial_board[0]),
+            tessdata_dir=tessdata_dir,
+        )
+        top_left, bottom_right = self._device_driver_fake.corner_cell_centers()
+        reader.set_cell_corner_centers(top_left, bottom_right)
         super().__init__(
             driver=self._device_driver_fake,
-            reader=BoardReaderTesseractOpenCV(
-                rows=len(initial_board),
-                cols=len(initial_board[0]),
-                tessdata_dir=tessdata_dir,
-            ),
+            reader=reader,
         )
         self._validate_initial_ocr_matches_expected_board()
 

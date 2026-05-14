@@ -110,3 +110,17 @@ class DeviceDriverAppium(DeviceDriver):
 
         for (start_x, start_y), (end_x, end_y) in pairwise(pixel_path):
             session.swipe(start_x, start_y, end_x, end_y, self._swipe_duration_ms)
+
+    def tap(self, coord: PixelCoord) -> None:
+        """Tap a single pixel coordinate via a zero-duration swipe.
+
+        Args:
+            coord: Pixel coordinate to tap.
+
+        Raises:
+            NotImplementedError: If no Appium session is attached.
+
+        """
+        session = self._get_session()
+        x, y = coord
+        session.swipe(x, y, x, y, 0)

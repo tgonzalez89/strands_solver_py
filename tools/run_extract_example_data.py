@@ -6,9 +6,14 @@ from __future__ import annotations
 import shutil
 from dataclasses import dataclass
 from pathlib import Path
+from typing import TYPE_CHECKING
 
 from strands_solver.board_reader.board_reader import Highlight
 from strands_solver.board_reader.board_reader_tesseract_open_cv import BoardReaderTesseractOpenCV
+from strands_solver.device.device_driver import DeviceDriver
+
+if TYPE_CHECKING:
+    from strands_solver.util.util import PixelCoord
 
 REPO_ROOT = Path(__file__).resolve().parents[1]
 
@@ -24,52 +29,34 @@ STATE_SYMBOL_TO_HIGHLIGHT = {
 
 
 def iter_example_dirs(data_dir: Path) -> list[Path]:
-    """Return sorted example directories under the data folder.
-
-    Args:
-        data_dir: Base data directory.
-
-    Returns:
-        Sorted example directories whose names start with `example`.
-
-    """
+    """Return sorted example directories under the data folder."""
     return sorted(path for path in data_dir.iterdir() if path.is_dir() and path.name.startswith("example"))
 
 
-def iter_images(input_dir: Path) -> list[Path]:
-    """Return sorted image paths from one example directory.
+def iter_board_images(input_dir: Path) -> list[Path]:
+    """Return sorted board image paths, preferring synthetic.png then Screenshot*.png."""
+    # Try synthetic.png first
+    synth = input_dir / "synthetic.png"
+    if synth.exists():
+        return [synth]
 
-    Args:
-        input_dir: Example directory to scan.
-
-    Returns:
-        Sorted image files with known screenshot extensions.
-
-    """
-    return sorted(path for path in input_dir.iterdir() if path.is_file() and path.suffix.lower() in IMAGE_EXTENSIONS)
+    # Fall back to Screenshot images
+    return sorted(
+        path
+        for path in input_dir.iterdir()
+        if path.is_file() and path.name.startswith("Screenshot") and path.suffix.lower() in IMAGE_EXTENSIONS
+    )
 
 
 def read_reference_board(example_dir: Path) -> list[str]:
-    """Read expected board rows from `board.txt`.
-
-    Args:
-        example_dir: Example directory containing `board.txt`.
-
-    Returns:
-        Non-empty stripped board rows.
-
-    """
+    """Read expected board rows from `board.txt`."""
     board_path = example_dir / "board.txt"
     lines = [line.strip() for line in board_path.read_text(encoding="utf-8").splitlines()]
     return [line for line in lines if line]
 
 
 def read_reference_cell_states(example_dir: Path, rows: int, cols: int) -> list[list[Highlight]] | None:
-    """Read expected cell-state grid from cell_states.txt if present.
-
-    Format supports either space-separated symbols (e.g. "N W S N W S")
-    or compact rows (e.g. "NWSNWS"). Supported symbols: N, W, S.
-    """
+    """Read expected cell-state grid from cell_states.txt if present."""
     states_path = example_dir / "cell_states.txt"
     if not states_path.exists():
         return None
@@ -92,42 +79,131 @@ def read_reference_cell_states(example_dir: Path, rows: int, cols: int) -> list[
     return parsed
 
 
-def validate_reference_board(reference_rows: list[str], example_dir: Path) -> tuple[int, int]:
-    """Validate reference board shape and return rows and columns.
+def read_reference_centers(example_dir: Path) -> dict[tuple[int, int], tuple[int, int]] | None:
+    """Read all cell centers from centers.txt if present.
 
-    Args:
-        reference_rows: Board rows loaded from fixture.
-        example_dir: Directory used for contextual error messages.
+    Expected line format: `row,col : x,y`.
 
     Returns:
-        Tuple of `(rows, cols)`.
-
-    Raises:
-        ValueError: If the board is empty or has inconsistent row lengths.
+        Mapping from (row, col) to (x, y) pixel center, or None if file missing.
 
     """
-    if not reference_rows:
-        msg = f"Reference board is empty in {example_dir / 'board.txt'}"
-        raise ValueError(msg)
+    centers_path = example_dir / "centers.txt"
+    if not centers_path.exists():
+        return None
 
-    cols = len(reference_rows[0])
-    if any(len(row) != cols for row in reference_rows):
-        msg = f"Reference board has inconsistent row lengths in {example_dir / 'board.txt'}"
-        raise ValueError(msg)
+    center_by_coord: dict[tuple[int, int], tuple[int, int]] = {}
+    for line_number, raw_line in enumerate(centers_path.read_text(encoding="utf-8").splitlines(), start=1):
+        line = raw_line.strip()
+        if not line:
+            continue
 
-    return len(reference_rows), cols
+        if ":" not in line:
+            msg = f"Invalid line in {centers_path} at {line_number}: expected 'row,col : x,y'"
+            raise ValueError(msg)
+
+        board_coord_text, pixel_coord_text = [part.strip() for part in line.split(":", maxsplit=1)]
+        try:
+            row_text, col_text = [part.strip() for part in board_coord_text.split(",", maxsplit=1)]
+            x_text, y_text = [part.strip() for part in pixel_coord_text.split(",", maxsplit=1)]
+            board_coord = (int(row_text), int(col_text))
+            pixel_coord = (int(x_text), int(y_text))
+        except (ValueError, TypeError) as error:
+            msg = f"Invalid line in {centers_path} at {line_number}: expected integers in 'row,col : x,y'"
+            raise ValueError(msg) from error
+
+        center_by_coord[board_coord] = pixel_coord
+
+    return center_by_coord or None
+
+
+class ReplayDriver(DeviceDriver):
+    """Device driver that replays a prerecorded screenshot sequence."""
+
+    def __init__(self, screenshots: list[bytes]) -> None:
+        """Initialize with a list of screenshot bytes."""
+        self._screenshots = screenshots
+        self._index = 0
+
+    def capture_screen(self) -> bytes:
+        """Return the next screenshot; keep returning the last one after sequence ends."""
+        if not self._screenshots:
+            msg = "Screenshot sequence is empty"
+            raise RuntimeError(msg)
+
+        if self._index < len(self._screenshots):
+            screenshot = self._screenshots[self._index]
+            self._index += 1
+            return screenshot
+
+        return self._screenshots[-1]
+
+    def tap(self, coord: PixelCoord) -> None:
+        """Accept taps without side effects."""
+        _ = coord
+
+    def execute_path(self, pixel_path: list[PixelCoord]) -> None:
+        """Ignore path execution."""
+        _ = pixel_path
+
+
+def try_calibrate_and_validate(
+    reader: BoardReaderTesseractOpenCV,
+    example_dir: Path,
+) -> tuple[bool, str]:
+    """Attempt to calibrate reader from disk images and validate against centers.txt.
+
+    Returns:
+        Tuple of (success, log_message).
+
+    """
+    clear_path = example_dir / "clear.png"
+    top_left_path = example_dir / "top_left.png"
+    bottom_right_path = example_dir / "bottom_right.png"
+
+    if not (clear_path.exists() and top_left_path.exists() and bottom_right_path.exists()):
+        return True, ""  # No calibration frames available; skip silently
+
+    # Load calibration frames
+    clear_bytes = clear_path.read_bytes()
+    top_left_bytes = top_left_path.read_bytes()
+    bottom_right_bytes = bottom_right_path.read_bytes()
+
+    # Run calibration via replay
+    driver = ReplayDriver(screenshots=[clear_bytes, top_left_bytes, clear_bytes, bottom_right_bytes])
+    try:
+        reader.calibrate(driver, timeout_s=2.0, poll_interval_s=0.0)
+    except (TimeoutError, ValueError, RuntimeError) as err:
+        msg = f"Calibration failed: {err}"
+        return False, msg
+
+    # Try to validate against centers.txt
+    rows = reader._rows  # noqa: SLF001
+    cols = reader._cols  # noqa: SLF001
+    reference_centers = read_reference_centers(example_dir)
+    if reference_centers is None:
+        return True, "Calibration succeeded (no centers.txt for validation)"
+
+    # Compare calibrated corners vs reference
+    tol = 3
+    tl_ref = reference_centers[(0, 0)]
+    br_ref = reference_centers[(rows - 1, cols - 1)]
+    tl_calib = reader._top_left_cell_center  # noqa: SLF001
+    br_calib = reader._bottom_right_cell_center  # noqa: SLF001
+
+    tl_match = abs(tl_calib[0] - tl_ref[0]) <= tol and abs(tl_calib[1] - tl_ref[1]) <= tol
+    br_match = abs(br_calib[0] - br_ref[0]) <= tol and abs(br_calib[1] - br_ref[1]) <= tol
+
+    if tl_match and br_match:
+        msg = f"Calibration validated: TL {tl_calib} vs {tl_ref}, BR {br_calib} vs {br_ref}"
+        return True, msg
+
+    msg = f"Calibration mismatch: TL {tl_calib} vs {tl_ref}, BR {br_calib} vs {br_ref}"
+    return False, msg
 
 
 def to_symbol(state: Highlight) -> str:
-    """Map highlight enum value to output symbol.
-
-    Args:
-        state: Highlight value to convert.
-
-    Returns:
-        `"N"`, `"W"`, or `"S"`.
-
-    """
+    """Map highlight enum value to output symbol."""
     if state == Highlight.WORD:
         return "W"
     if state == Highlight.SPANGRAM:
@@ -136,30 +212,12 @@ def to_symbol(state: Highlight) -> str:
 
 
 def format_grid(cell_states: list[list[Highlight]]) -> str:
-    """Format a state grid with space-separated N/W/S symbols.
-
-    Args:
-        cell_states: Cell-state grid to format.
-
-    Returns:
-        Multiline text representation of the grid.
-
-    """
+    """Format a state grid with space-separated N/W/S symbols."""
     return "\n".join(" ".join(to_symbol(cell) for cell in row) for row in cell_states)
 
 
 def format_board_log_entry(image_name: str, board_rows: list[str], reference_rows: list[str]) -> list[str]:
-    """Build one OCR board log entry including reference comparison.
-
-    Args:
-        image_name: Source image file name.
-        board_rows: OCR-extracted board rows.
-        reference_rows: Expected board rows from fixture.
-
-    Returns:
-        Log lines for one image entry.
-
-    """
+    """Build one OCR board log entry."""
     matched_rows = sum(1 for actual, expected in zip(board_rows, reference_rows, strict=False) if actual == expected)
     exact_match = board_rows == reference_rows
 
@@ -194,16 +252,7 @@ def format_board_log_entry(image_name: str, board_rows: list[str], reference_row
 
 
 def score_board_rows(board_rows: list[str], reference_rows: list[str]) -> tuple[int, int, bool, bool]:
-    """Compute OCR board-level score metrics.
-
-    Args:
-        board_rows: OCR-extracted board rows.
-        reference_rows: Expected board rows from fixture.
-
-    Returns:
-        Tuple of `(identified_letters, total_letters, exact_match, complete_failure)`.
-
-    """
+    """Compute OCR board-level score metrics."""
     rows = len(reference_rows)
     cols = len(reference_rows[0])
     total_letters = rows * cols
@@ -225,16 +274,7 @@ def score_cell_states(
     extracted_states: list[list[Highlight]],
     expected_states: list[list[Highlight]],
 ) -> tuple[int, int, bool]:
-    """Compute cell-state score metrics.
-
-    Args:
-        extracted_states: Extracted cell-state grid.
-        expected_states: Expected cell-state grid.
-
-    Returns:
-        Tuple of `(matched_cells, total_cells, exact_match)`.
-
-    """
+    """Compute cell-state score metrics."""
     total_cells = len(expected_states) * len(expected_states[0]) if expected_states else 0
     matched_cells = 0
     for row_idx in range(len(expected_states)):
@@ -245,15 +285,7 @@ def score_cell_states(
 
 
 def copy_debug_image(output_path: Path) -> None:
-    """Copy the temporary OCR debug image to its final destination.
-
-    Args:
-        output_path: Destination path for the copied debug image.
-
-    Raises:
-        RuntimeError: If the temporary debug image does not exist.
-
-    """
+    """Copy the temporary OCR debug image to its final destination."""
     if not TEMP_DEBUG_IMAGE.exists():
         msg = f"expected {TEMP_DEBUG_IMAGE} was not generated"
         raise RuntimeError(msg)
@@ -377,31 +409,53 @@ def append_cell_result(
     return "ERROR", str(extraction.cell_error)
 
 
-def process_example_dir(example_dir: Path) -> tuple[int, int]:
-    """Process one example directory and write board/cell-state debug outputs.
-
-    Args:
-        example_dir: Example directory containing images and references.
+def process_example_dir(example_dir: Path) -> tuple[int, int, int, int]:
+    """Process one example directory.
 
     Returns:
-        Tuple of `(successful_images, total_images)`.
+        Tuple of (successful_extractions, total_extractions, successful_calibrations, total_calibration_attempts).
 
     """
     example_name = example_dir.name
-    image_paths = iter_images(example_dir)
+    image_paths = iter_board_images(example_dir)
     if not image_paths:
-        print(f"SKIP {example_name}: no images found")
-        return 0, 0
+        print(f"SKIP {example_name}: no board images found")
+        return 0, 0, 0, 0
 
-    reference_rows = read_reference_board(example_dir)
-    rows, cols = validate_reference_board(reference_rows, example_dir)
+    try:
+        reference_rows = read_reference_board(example_dir)
+        rows, cols = len(reference_rows), len(reference_rows[0])
+    except (OSError, ValueError) as err:
+        print(f"SKIP {example_name}: {err}")
+        return 0, 0, 0, 0
+
     expected_cell_states = read_reference_cell_states(example_dir, rows, cols)
     reader = BoardReaderTesseractOpenCV(rows=rows, cols=cols)
 
+    # Try calibration if frames exist
+    calib_success, calib_msg = try_calibrate_and_validate(reader, example_dir)
+    calib_attempts = 1 if (example_dir / "clear.png").exists() else 0
+    calib_count = 1 if calib_success and calib_attempts == 1 else 0
+
+    if calib_msg:
+        if calib_success:
+            print(f"  {example_name}: {calib_msg}")
+        else:
+            print(f"  {example_name}: CALIB FAIL: {calib_msg}")
+
     board_log_path = OUTPUT_DIR / f"{example_name}_board_rows.log"
     cell_log_path = OUTPUT_DIR / f"{example_name}_cell_states.log"
+    calib_log_path = OUTPUT_DIR / f"{example_name}_calibration.log"
     board_log_lines: list[str] = []
     cell_log_lines: list[str] = []
+    calib_log_lines: list[str] = []
+
+    # Write calibration log if frames were present
+    if calib_attempts > 0:
+        calib_log_lines.append(f"Calibration attempt for {example_name}")
+        calib_log_lines.append(f"Status: {'PASS' if calib_success else 'FAIL'}")
+        calib_log_lines.append(f"Message: {calib_msg}")
+        calib_log_lines.append("")
 
     success_count = 0
     for image_path in image_paths:
@@ -430,19 +484,14 @@ def process_example_dir(example_dir: Path) -> tuple[int, int]:
 
     board_log_path.write_text("\n".join(board_log_lines), encoding="utf-8")
     cell_log_path.write_text("\n".join(cell_log_lines), encoding="utf-8")
+    if calib_log_lines:
+        calib_log_path.write_text("\n".join(calib_log_lines), encoding="utf-8")
 
-    print(f"Wrote {board_log_path}")
-    print(f"Wrote {cell_log_path}")
-    return success_count, len(image_paths)
+    return success_count, len(image_paths), calib_count, calib_attempts
 
 
 def main() -> int:
-    """Process all example directories under `data/`.
-
-    Returns:
-        Process exit code (`0` if all processed images succeeded).
-
-    """
+    """Process all example directories under `data/`."""
     if not DATA_DIR.exists() or not DATA_DIR.is_dir():
         print(f"Input directory not found: {DATA_DIR}")
         return 1
@@ -456,17 +505,25 @@ def main() -> int:
 
     total_success = 0
     total_images = 0
+    total_calib_success = 0
+    total_calib_attempts = 0
+
     try:
         for example_dir in example_dirs:
-            success_count, image_count = process_example_dir(example_dir)
+            success_count, image_count, calib_success, calib_attempts = process_example_dir(example_dir)
             total_success += success_count
             total_images += image_count
+            total_calib_success += calib_success
+            total_calib_attempts += calib_attempts
     finally:
         if TEMP_DEBUG_IMAGE.exists():
             TEMP_DEBUG_IMAGE.unlink()
 
     print(f"Processed {total_success}/{total_images} images across {len(example_dirs)} example directories")
-    return 0 if total_success == total_images else 1
+    if total_calib_attempts > 0:
+        print(f"Calibration: {total_calib_success}/{total_calib_attempts} examples")
+    calib_all_pass = total_calib_attempts in (0, total_calib_success)
+    return 0 if total_success == total_images and calib_all_pass else 1
 
 
 if __name__ == "__main__":

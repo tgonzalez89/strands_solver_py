@@ -20,6 +20,9 @@ class MockDriver(DeviceDriver):
             self._capture_idx += 1
         return screenshot
 
+    def tap(self, coord: PixelCoord) -> None:
+        _ = coord
+
     def execute_path(self, pixel_path: list[PixelCoord]) -> None:
         self.executed_paths.append(pixel_path)
 

@@ -82,12 +82,38 @@ def write_cell_states_file(example_dir: Path, state_symbols: list[list[str]]) ->
     (example_dir / "cell_states.txt").write_text("\n".join(lines) + "\n", encoding="utf-8")
 
 
+def write_centers_file(example_dir: Path, centers: dict[tuple[int, int], tuple[int, int]]) -> None:
+    """Write `centers.txt` with all cell centers.
+
+    Args:
+        example_dir: Target example directory.
+        centers: Mapping from (row, col) to (x, y) pixel center.
+
+    """
+    lines = []
+    for row in range(ROWS):
+        for col in range(COLS):
+            x, y = centers[(row, col)]
+            lines.append(f"{row},{col} : {x},{y}")
+    (example_dir / "centers.txt").write_text("\n".join(lines) + "\n", encoding="utf-8")
+
+
 def render_example(
     example_dir: Path,
     board_rows: list[str],
     spec: RenderExampleSpec,
 ) -> None:
     """Render and persist one synthetic example image and references.
+
+    Generates:
+    - synthetic.png: main screenshot with all highlights
+    - clear.png: same board with full word/spangram overlays but no selection
+    - top_left.png: word/spangram overlays but (0,0) is ONLY selection (no word/spangram)
+    - bottom_right.png: word/spangram overlays but (rows-1,cols-1) is ONLY selection (no word/spangram)
+    - centers.txt: all cell centers for validation
+
+    Calibration frames are "noisy" (with word/spangram highlights visible elsewhere) but
+    have clean selection blobs at target corners by removing those coords from word/spangram.
 
     Args:
         example_dir: Directory to create/update for this example.
@@ -99,7 +125,8 @@ def render_example(
     write_board_file(example_dir, board_rows)
     write_cell_states_file(example_dir, spec.expected_symbols)
 
-    png_bytes, _ = render_board_png(
+    # Render main screenshot with original spec
+    png_bytes, centers = render_board_png(
         board_rows,
         mode=spec.mode,
         word_coords=spec.word_coords,
@@ -108,6 +135,47 @@ def render_example(
         config=RenderConfig(),
     )
     (example_dir / spec.image_name).write_bytes(png_bytes)
+
+    # Render clear.png: full highlights but no selection
+    clear_bytes, _ = render_board_png(
+        board_rows,
+        mode=spec.mode,
+        word_coords=spec.word_coords,
+        spangram_coords=spec.spangram_coords,
+        selection_coords=set(),
+        config=RenderConfig(),
+    )
+    (example_dir / "clear.png").write_bytes(clear_bytes)
+
+    # Render top_left.png: remove (0,0) from word/spangram to give selection precedence
+    tl_word_coords = spec.word_coords - {(0, 0)}
+    tl_spangram_coords = spec.spangram_coords - {(0, 0)}
+    top_left_bytes, _ = render_board_png(
+        board_rows,
+        mode=spec.mode,
+        word_coords=tl_word_coords,
+        spangram_coords=tl_spangram_coords,
+        selection_coords={(0, 0)},
+        config=RenderConfig(),
+    )
+    (example_dir / "top_left.png").write_bytes(top_left_bytes)
+
+    # Render bottom_right.png: remove (rows-1,cols-1) from word/spangram
+    br_coord = (ROWS - 1, COLS - 1)
+    br_word_coords = spec.word_coords - {br_coord}
+    br_spangram_coords = spec.spangram_coords - {br_coord}
+    bottom_right_bytes, _ = render_board_png(
+        board_rows,
+        mode=spec.mode,
+        word_coords=br_word_coords,
+        spangram_coords=br_spangram_coords,
+        selection_coords={br_coord},
+        config=RenderConfig(),
+    )
+    (example_dir / "bottom_right.png").write_bytes(bottom_right_bytes)
+
+    # Write all cell centers for validation
+    write_centers_file(example_dir, centers)
 
 
 def make_uniform_symbols(symbol: str) -> list[list[str]]:

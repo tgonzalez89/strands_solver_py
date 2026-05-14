@@ -54,6 +54,10 @@ class BotDevice(Bot):
 
     @staticmethod
     def _solver_board_from_state(state: BoardState) -> list[str]:
+        """Convert a BoardState into the solver's expected board format.
+
+        It is a list of lowercase strings with blocked cells replaced by BLOCKED_CELL.
+        """
         if state.cell_states is None:
             return [row.lower() for row in state.board]
 

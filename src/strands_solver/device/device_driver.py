@@ -20,6 +20,15 @@ class DeviceDriver(ABC):
         """
 
     @abstractmethod
+    def tap(self, coord: PixelCoord) -> None:
+        """Tap a single pixel coordinate on the device.
+
+        Args:
+            coord: Pixel coordinate to tap.
+
+        """
+
+    @abstractmethod
     def execute_path(self, pixel_path: list[PixelCoord]) -> None:
         """Execute a gesture path in pixel coordinates.
 

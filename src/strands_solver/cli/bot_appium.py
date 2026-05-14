@@ -94,9 +94,11 @@ def main(argv: list[str] | None = None) -> int:
         return 2
 
     driver.attach_session(session)
+    reader = BoardReaderTesseractOpenCV(tessdata_dir=args.tessdata_dir or None)
+    reader.calibrate(driver)
     bot = BotDevice(
         driver=driver,
-        reader=BoardReaderTesseractOpenCV(tessdata_dir=args.tessdata_dir or None),
+        reader=reader,
     )
     try:
         successful_moves = bot.run(trie, verbose=args.verbose)

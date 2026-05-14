@@ -1,6 +1,9 @@
 """OpenCV + tesserocr board reader implementation."""
 
+from __future__ import annotations
+
 import os
+import time
 from typing import TYPE_CHECKING, Final, cast
 
 from strands_solver.board_reader.board_reader import Highlight
@@ -19,6 +22,7 @@ except ModuleNotFoundError:
 
 if TYPE_CHECKING:
     from strands_solver.board_reader.board_reader import CellStateGrid
+    from strands_solver.device.device_driver import DeviceDriver
     from strands_solver.util.util import PixelCoord
 
 TOP_LEFT_CELL_CENTER: Final = (155, 752)
@@ -72,14 +76,164 @@ class BoardReaderTesseractOpenCV(BoardReaderBase):
 
         super().__init__(rows=rows, cols=cols)
 
-        self._cell_height = (BOTTOM_RIGHT_CELL_CENTER[1] - TOP_LEFT_CELL_CENTER[1]) // (self._rows - 1)
-        self._cell_width = (BOTTOM_RIGHT_CELL_CENTER[0] - TOP_LEFT_CELL_CENTER[0]) // (self._cols - 1)
-        self._cell_centers = self._compute_cell_centers()
-        self._board_top_left: PixelCoord = (
-            TOP_LEFT_CELL_CENTER[0] - self._cell_width // 2,
-            TOP_LEFT_CELL_CENTER[1] - self._cell_height // 2,
-        )
+        self._top_left_cell_center: PixelCoord = TOP_LEFT_CELL_CENTER
+        self._bottom_right_cell_center: PixelCoord = BOTTOM_RIGHT_CELL_CENTER
+        self._cell_height: int = 0
+        self._cell_width: int = 0
+        self._cell_centers: list[list[PixelCoord]] = []
+        self._board_top_left: PixelCoord = (0, 0)
+        self._recalculate_geometry()
         self._tessdata_dir = tessdata_dir or os.environ.get("TESSDATA_PREFIX", TESSDATA_DIR)
+
+    def _recalculate_geometry(self) -> None:
+        """Recompute cell dimensions and centers from the current corner coordinates."""
+        tl = self._top_left_cell_center
+        br = self._bottom_right_cell_center
+        self._cell_height = (br[1] - tl[1]) // (self._rows - 1)
+        self._cell_width = (br[0] - tl[0]) // (self._cols - 1)
+        self._cell_centers = self._compute_cell_centers()
+        self._board_top_left = (
+            tl[0] - self._cell_width // 2,
+            tl[1] - self._cell_height // 2,
+        )
+
+    def set_cell_corner_centers(
+        self,
+        top_left_cell_center: PixelCoord,
+        bottom_right_cell_center: PixelCoord,
+    ) -> None:
+        """Set board corner cell centers and recompute geometry.
+
+        This is useful for non-interactive integrations that can provide known
+        board geometry (for example synthetic/fake device renderers).
+
+        Args:
+            top_left_cell_center: Pixel center of cell (0, 0).
+            bottom_right_cell_center: Pixel center of cell (rows-1, cols-1).
+
+        """
+        self._top_left_cell_center = top_left_cell_center
+        self._bottom_right_cell_center = bottom_right_cell_center
+        self._recalculate_geometry()
+
+    def calibrate(
+        self,
+        driver: DeviceDriver,
+        timeout_s: float = 30.0,
+        poll_interval_s: float = 0.5,
+    ) -> None:
+        """Interactively calibrate cell-corner coordinates using the device.
+
+        Prompts the user to tap the top-left and bottom-right board cells in turn.
+        For each corner:
+
+        1. Waits until no SELECTION_COLOR blobs are visible (asking the user to
+           deselect all cells if needed).
+        2. Prompts the user to tap the target cell.
+        3. Polls screenshots until exactly one SELECTION_COLOR blob appears,
+           recording its centroid as the corner coordinate.
+        4. Taps that coordinate to deselect the cell before moving on.
+
+        After both corners are captured, the internal geometry (cell width/height,
+        cell centers, board top-left) is updated.
+
+        Args:
+            driver: Device driver used to capture screenshots and send taps.
+            timeout_s: Seconds to wait for the user to tap each corner.
+            poll_interval_s: Seconds between successive screenshot polls.
+
+        Raises:
+            TimeoutError: If the user does not tap within `timeout_s` seconds.
+
+        """
+        corners: list[tuple[str, str]] = [
+            ("TOP-LEFT", "_top_left_cell_center"),
+            ("BOTTOM-RIGHT", "_bottom_right_cell_center"),
+        ]
+
+        for corner_name, attr in corners:
+            # Step 1: Wait until screen is clear of any selection.
+            while True:
+                image = self._decode_image(driver.capture_screen())
+                blobs = self._find_selection_blobs(image)
+                if not blobs:
+                    break
+                print(f"Please deselect all cells ({len(blobs)} selected cell(s) detected)...")
+                time.sleep(poll_interval_s)
+
+            # Step 2: Prompt user.
+            print(f"Please tap the {corner_name} cell...")
+
+            # Step 3: Poll until exactly one blob appears.
+            deadline = time.monotonic() + timeout_s
+            center: PixelCoord | None = None
+            while time.monotonic() < deadline:
+                time.sleep(poll_interval_s)
+                image = self._decode_image(driver.capture_screen())
+                blobs = self._find_selection_blobs(image)
+                if len(blobs) == 1:
+                    center = blobs[0]
+                    break
+
+            if center is None:
+                msg = f"Calibration timed out waiting for {corner_name} tap after {timeout_s:.0f}s"
+                raise TimeoutError(msg)
+
+            setattr(self, attr, center)
+            print(f"  -> Detected {corner_name} at {center}")
+
+            # Step 4: Tap to deselect.
+            driver.tap(center)
+            time.sleep(poll_interval_s)
+
+        self._recalculate_geometry()
+        print("Calibration complete.")
+
+    @staticmethod
+    def _find_selection_blobs(image: object) -> list[PixelCoord]:
+        """Locate blobs matching SELECTION_COLOR in a decoded image.
+
+        Uses a color-range mask around SELECTION_COLOR (with ±4 tolerance per
+        channel) and contour detection to identify selected cells.
+
+        Args:
+            image: Decoded OpenCV image (BGR, as returned by `_decode_image`).
+
+        Returns:
+            List of (x, y) centroid coordinates for each detected blob.
+
+        """
+        image_matlike = cast("cv2.typing.MatLike", image)
+
+        # SELECTION_COLOR is RGB; convert to BGR for OpenCV.
+        r, g, b = SELECTION_COLOR
+        tol = 4
+        lower = np.array([max(b - tol, 0), max(g - tol, 0), max(r - tol, 0)], dtype=np.uint8)
+        upper = np.array([min(b + tol, 255), min(g + tol, 255), min(r + tol, 255)], dtype=np.uint8)
+
+        mask = cv2.inRange(image_matlike, lower, upper)
+
+        # Morphological opening to remove noise, then find contours.
+        kernel = cv2.getStructuringElement(cv2.MORPH_ELLIPSE, (5, 5))
+        mask = cv2.morphologyEx(mask, cv2.MORPH_OPEN, kernel)
+
+        contours, _ = cv2.findContours(mask, cv2.RETR_EXTERNAL, cv2.CHAIN_APPROX_SIMPLE)
+
+        # Filter by area: a cell circle of CIRCLE_DIAMETER px has area ≈ π*(D/2)².
+        min_area = 3.14159 * (CIRCLE_DIAMETER / 2) ** 2 * 0.3
+        centers: list[PixelCoord] = []
+        for contour in contours:
+            area = cv2.contourArea(contour)
+            if area < min_area:
+                continue
+            moment = cv2.moments(contour)
+            if moment["m00"] == 0:
+                continue
+            cx = int(moment["m10"] / moment["m00"])
+            cy = int(moment["m01"] / moment["m00"])
+            centers.append((cx, cy))
+
+        return centers
 
     def _decode_image(self, screenshot: bytes) -> object:
         """Decode screenshot bytes into an OpenCV BGR image.
@@ -109,16 +263,6 @@ class BoardReaderTesseractOpenCV(BoardReaderBase):
 
     def _extract_cell_centers(self, image: object) -> list[list[PixelCoord]]:
         """Locate each board cell center."""
-        # TODO: Think about extracting the centers at initialization time:
-        #   - Pass them as a config (maybe have a config file).
-        #   - Prompt the user to tap the top-left and bottom-right corners of the board.
-        #     - Capture the coordinates of the taps.
-        #   - Automatically tap the top-left and bottom-right corners of the board.
-        #     - After each tap there should be a colored circle of color SELECTION_COLOR around the tapped letter.
-        #       Use OpenCV to detect the circle and capture the coordinates.
-        #       Caveat: If the board is not in the initial empty condition (i.e. some letters are already highlighted),
-        #               we might need more intelligent detection.
-
         _ = image
         return self._cell_centers
 
@@ -308,8 +452,8 @@ class BoardReaderTesseractOpenCV(BoardReaderBase):
         for row in range(self._rows):
             row_centers: list[PixelCoord] = []
             for col in range(self._cols):
-                center_x = TOP_LEFT_CELL_CENTER[0] + col * self._cell_width
-                center_y = TOP_LEFT_CELL_CENTER[1] + row * self._cell_height
+                center_x = self._top_left_cell_center[0] + col * self._cell_width
+                center_y = self._top_left_cell_center[1] + row * self._cell_height
                 row_centers.append((center_x, center_y))
             cell_centers.append(row_centers)
 

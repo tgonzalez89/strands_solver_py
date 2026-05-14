@@ -140,7 +140,7 @@ class Node:
         board: list[str],
         current_path: list[BoardCoord],
         found_paths: list[list[BoardCoord]],
-        wall_segments: list[tuple[BoardCoord, BoardCoord]],
+        wall_segments: list[tuple[BoardCoord, BoardCoord]] | None = None,
     ) -> None:
         """Recursively collect valid paths starting from this trie node.
 
@@ -148,8 +148,8 @@ class Node:
             board: Current board rows.
             current_path: Path built so far, ending at this node.
             found_paths: Mutable output list for discovered valid paths.
-            wall_segments: Pre-computed diagonal walls derived from blocked
-                cells on the board. Steps that cross any of these are rejected.
+            wall_segments: Optional explicit diagonal wall segments from
+                accepted prior moves. Steps crossing any of these are rejected.
 
         """
         if self.is_word and not leaves_small_island(board, current_path):
@@ -163,7 +163,7 @@ class Node:
                 continue
             if path_would_self_cross(current_path, next_coord):
                 continue
-            if any(
+            if wall_segments and any(
                 _segments_intersect(current_coord, next_coord, seg_start, seg_end)
                 for seg_start, seg_end in wall_segments
             ):
@@ -243,67 +243,22 @@ class Trie:
         )
         return [path for _, path in ranked_candidates]
 
-    @staticmethod
-    def _get_blocked_cell_wall_segments(board: list[str]) -> list[tuple[BoardCoord, BoardCoord]]:
-        """Return wall segments implied by diagonally adjacent blocked cells.
-
-        When a word is played its cells become blocked (`#`). Any two
-        consecutive cells in the word's path that are diagonal neighbours
-        leave an invisible wall that remaining cells must not cross.
-
-        To avoid over-blocking late-game boards with large blocked regions,
-        only keep blocked-cell diagonals that can actually block a legal
-        crossing move: for a blocked diagonal ``a-b``, the opposite two
-        corners of that 2x2 square must both be open cells.
-
-        Args:
-            board: Current board rows (blocked cells marked with `#`).
-
-        Returns:
-            List of undirected wall segments as ``(coord_a, coord_b)`` pairs.
-
-        """
-        blocked: set[BoardCoord] = {
-            (row_idx, col_idx)
-            for row_idx, row in enumerate(board)
-            for col_idx, char in enumerate(row)
-            if char == BLOCKED_CELL
-        }
-
-        def is_open_cell(row_idx: int, col_idx: int) -> bool:
-            if row_idx < 0 or row_idx >= len(board):
-                return False
-            if col_idx < 0 or col_idx >= len(board[row_idx]):
-                return False
-            return board[row_idx][col_idx] != BLOCKED_CELL
-
-        segments: list[tuple[BoardCoord, BoardCoord]] = []
-        for row, col in blocked:
-            for dr, dc in ((-1, -1), (-1, 1), (1, -1), (1, 1)):
-                neighbor: BoardCoord = (row + dr, col + dc)
-                # Emit each pair once (smaller coord first) to avoid duplicates.
-                if neighbor not in blocked or neighbor <= (row, col):
-                    continue
-
-                # A diagonal blocked segment only matters if it blocks a
-                # crossing move between the opposite corners of the same 2x2.
-                crossing_a = (row, neighbor[1])
-                crossing_b = (neighbor[0], col)
-                if is_open_cell(*crossing_a) and is_open_cell(*crossing_b):
-                    segments.append(((row, col), neighbor))
-        return segments
-
-    def find_all_word_paths(self, board: list[str]) -> list[list[BoardCoord]]:
+    def find_all_word_paths(
+        self,
+        board: list[str],
+        wall_segments: list[tuple[BoardCoord, BoardCoord]] | None = None,
+    ) -> list[list[BoardCoord]]:
         """Find all valid trie word paths in the given board.
 
         Args:
             board: Board rows.
+            wall_segments: Optional explicit diagonal wall segments from
+                accepted prior moves.
 
         Returns:
             List of coordinate paths for all valid matched words.
 
         """
-        wall_segments = self._get_blocked_cell_wall_segments(board)
         found_paths: list[list[BoardCoord]] = []
 
         for row_idx, row in enumerate(board):

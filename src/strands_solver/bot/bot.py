@@ -55,7 +55,13 @@ class Bot(ABC):
             if verbose:
                 board_for_printing = board_to_text(board, " ")
                 print(f"[VERBOSE] Finding paths for board:\n{board_for_printing}")
-            candidate_paths = trie.find_all_word_paths(board)
+            wall_segments = [
+                (path[idx], path[idx + 1])
+                for _, path in successful_moves
+                for idx in range(len(path) - 1)
+                if abs(path[idx + 1][0] - path[idx][0]) == 1 and abs(path[idx + 1][1] - path[idx][1]) == 1
+            ]
+            candidate_paths = trie.find_all_word_paths(board, wall_segments or None)
 
             skipped_any = False
             for path in candidate_paths:

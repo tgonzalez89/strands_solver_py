@@ -195,18 +195,20 @@ def test_trie_rejects_boot_when_der_diagonal_wall_blocks_path() -> None:
     # After removal those cells become '#'.
     # BOOT's only path is B(1,2)->O(2,2)->O(2,1)->T(1,0).
     # The O(2,1)->T(1,0) step crosses the ghost wall left by E(1,1)->R(2,0).
-    # The solver must infer this wall from the diagonally adjacent '#' cells
-    # and reject BOOT even without explicit blocked_segments from the caller.
+    # The solver rejects BOOT when we provide DER's diagonal wall segment.
     board_after_der = [
         "to#",
         "t#b",
         "#oo",
     ]
+    der_wall_segments = [
+        ((1, 1), (2, 0)),
+    ]
 
     trie = Trie.build_from_words(["boot"])
 
-    paths = trie.find_all_word_paths(board_after_der)
-    assert paths == [], "BOOT must be rejected because E->R ghost wall is inferred from '#' cells"
+    paths = trie.find_all_word_paths(board_after_der, der_wall_segments)
+    assert paths == [], "BOOT must be rejected when E->R diagonal wall is provided"
 
 
 def test_trie_rejects_path_crossing_previously_played_word_diagonal_wall() -> None:
@@ -220,20 +222,22 @@ def test_trie_rejects_path_crossing_previously_played_word_diagonal_wall() -> No
     # After removal those cells become '#'.
     # STIR path S(3,1)->T(3,2)->I(2,3)->R(1,3) is the only possible path,
     # but the T->I step crosses the ghost diagonal wall left by D->W.
-    # Without blocked_segments the path is found; with them it must be rejected.
+    # Without explicit wall segments the path may be found; with DWARF's
+    # diagonal segment it must be rejected.
     board_after_dwarf = [
         "htraeh",
         "q##rsi",
         "u##ier",
         "est#ng",
     ]
+    dwarf_wall_segments = [
+        ((3, 3), (2, 2)),
+    ]
 
     trie = Trie.build_from_words(["stir"])
 
-    # STIR must be rejected: the '#' cells left by DWARF have diagonally
-    # adjacent pairs that imply the D->W wall; T->I crosses it.
-    paths = trie.find_all_word_paths(board_after_dwarf)
-    assert paths == [], "STIR must be rejected because the D->W ghost wall is inferred from '#' cells"
+    paths = trie.find_all_word_paths(board_after_dwarf, dwarf_wall_segments)
+    assert paths == [], "STIR must be rejected when D->W diagonal wall is provided"
 
 
 def test_trie_finds_word_on_late_game_board_without_overblocking() -> None:
@@ -247,8 +251,11 @@ def test_trie_finds_word_on_late_game_board_without_overblocking() -> None:
         "######",
         "######",
     ]
-    trie = Trie.build_from_words(["gets"])
+    trie = Trie.build_from_words(["gets", "sfan"])
 
     paths = trie.find_all_word_paths(board)
 
-    assert paths == [[(1, 5), (1, 4), (2, 3), (1, 3)]]
+    assert paths == [
+        [(1, 5), (1, 4), (2, 3), (1, 3)],
+        [(2, 2), (3, 2), (4, 3), (5, 4)],
+    ]

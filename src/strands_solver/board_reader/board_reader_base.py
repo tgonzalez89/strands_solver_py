@@ -42,7 +42,7 @@ class BoardReaderBase(BoardReader):
         self._cols = cols
         self._last_screenshot_hash: int | None = None
         self._last_state: BoardState | None = None
-        self._last_cell_centers: list[list[PixelCoord]] = []
+        self._cell_centers: list[list[PixelCoord]] = []
 
     # ------------------------------------------------------------------
     # Abstract hooks - implemented by concrete subclasses
@@ -127,16 +127,12 @@ class BoardReaderBase(BoardReader):
             return self._last_state
 
         image = self._decode_image(screenshot)
-        self._last_cell_centers = self._extract_cell_centers(image)
         cell_states = self._extract_cell_states(image)
 
-        # Re-extract board rows if cell states have changed since last extraction.
-        # Not strictly necessary since the board letters shouldn't change during a game.
-        last_cell_states = self._last_state.cell_states if self._last_state is not None else None
-        if cell_states != last_cell_states or self._last_state is None:
-            board = self._extract_board_rows(image)
-        else:
-            board = self._last_state.board.copy()
+        # These two are only needed once.
+        if not self._cell_centers:
+            self._cell_centers = self._extract_cell_centers(image)
+        board = self._extract_board_rows(image) if self._last_state is None else self._last_state.board
 
         state = BoardState(board, cell_states)
         self._last_screenshot_hash = screenshot_hash
@@ -196,8 +192,8 @@ class BoardReaderBase(BoardReader):
             ValueError: If cell geometry is not available or a coordinate is missing.
 
         """
-        if not self._last_cell_centers:
+        if not self._cell_centers:
             msg = "Cell geometry not available; call extract_state first"
             raise ValueError(msg)
 
-        return [self._last_cell_centers[row_idx][col_idx] for row_idx, col_idx in move]
+        return [self._cell_centers[row_idx][col_idx] for row_idx, col_idx in move]

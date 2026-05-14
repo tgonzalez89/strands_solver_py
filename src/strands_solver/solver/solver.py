@@ -40,20 +40,12 @@ def get_neighbor_coords(board: list[str], row: int, col: int) -> list[BoardCoord
     return neighbors
 
 
-def leaves_small_island(
-    board: list[str],
-    removed_path: list[BoardCoord],
-    wall_segments: list[tuple[BoardCoord, BoardCoord]] | None = None,
-) -> bool:
+def leaves_small_island(board: list[str], removed_path: list[BoardCoord]) -> bool:
     """Check whether removing a path creates too-small connected islands.
 
     Args:
         board: Current board rows.
         removed_path: Coordinates treated as removed for this validation check.
-        wall_segments: Pre-computed diagonal walls (blocked-cell pairs plus the
-            current path's own edges) that must not be crossed during the BFS.
-            Callers should build this once and pass it in rather than letting
-            this function recompute it on every recursive call.
 
     Returns:
         True if any remaining connected component has size less than
@@ -62,8 +54,6 @@ def leaves_small_island(
     """
     removed_coords = set(removed_path)
     effective_walls = list(itertools.pairwise(removed_path))
-    if wall_segments:
-        effective_walls.extend(wall_segments)
     remaining_coords = {
         (row_idx, col_idx)
         for row_idx, row in enumerate(board)
@@ -159,11 +149,10 @@ class Node:
             current_path: Path built so far, ending at this node.
             found_paths: Mutable output list for discovered valid paths.
             wall_segments: Pre-computed diagonal walls derived from blocked
-                cells on the board.  Steps that cross any of these are
-                rejected, and the list is forwarded to `leaves_small_island`.
+                cells on the board. Steps that cross any of these are rejected.
 
         """
-        if self.is_word and not leaves_small_island(board, current_path, wall_segments):
+        if self.is_word and not leaves_small_island(board, current_path):
             found_paths.append(current_path.copy())
 
         current_coord = current_path[-1]
@@ -258,12 +247,14 @@ class Trie:
     def _get_blocked_cell_wall_segments(board: list[str]) -> list[tuple[BoardCoord, BoardCoord]]:
         """Return wall segments implied by diagonally adjacent blocked cells.
 
-        When a word is played its cells become blocked (`#`).  Any two
+        When a word is played its cells become blocked (`#`). Any two
         consecutive cells in the word's path that are diagonal neighbours
-        leave an invisible wall that remaining cells must not cross.  Since
-        the board no longer stores the original order, we conservatively
-        treat *every* pair of diagonally adjacent `#` cells as a wall
-        segment — they must have been a traversed edge of some prior word.
+        leave an invisible wall that remaining cells must not cross.
+
+        To avoid over-blocking late-game boards with large blocked regions,
+        only keep blocked-cell diagonals that can actually block a legal
+        crossing move: for a blocked diagonal ``a-b``, the opposite two
+        corners of that 2x2 square must both be open cells.
 
         Args:
             board: Current board rows (blocked cells marked with `#`).
@@ -278,12 +269,27 @@ class Trie:
             for col_idx, char in enumerate(row)
             if char == BLOCKED_CELL
         }
+
+        def is_open_cell(row_idx: int, col_idx: int) -> bool:
+            if row_idx < 0 or row_idx >= len(board):
+                return False
+            if col_idx < 0 or col_idx >= len(board[row_idx]):
+                return False
+            return board[row_idx][col_idx] != BLOCKED_CELL
+
         segments: list[tuple[BoardCoord, BoardCoord]] = []
         for row, col in blocked:
             for dr, dc in ((-1, -1), (-1, 1), (1, -1), (1, 1)):
                 neighbor: BoardCoord = (row + dr, col + dc)
                 # Emit each pair once (smaller coord first) to avoid duplicates.
-                if neighbor in blocked and neighbor > (row, col):
+                if neighbor not in blocked or neighbor <= (row, col):
+                    continue
+
+                # A diagonal blocked segment only matters if it blocks a
+                # crossing move between the opposite corners of the same 2x2.
+                crossing_a = (row, neighbor[1])
+                crossing_b = (neighbor[0], col)
+                if is_open_cell(*crossing_a) and is_open_cell(*crossing_b):
                     segments.append(((row, col), neighbor))
         return segments
 

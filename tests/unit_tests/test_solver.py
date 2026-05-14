@@ -234,3 +234,21 @@ def test_trie_rejects_path_crossing_previously_played_word_diagonal_wall() -> No
     # adjacent pairs that imply the D->W wall; T->I crosses it.
     paths = trie.find_all_word_paths(board_after_dwarf)
     assert paths == [], "STIR must be rejected because the D->W ghost wall is inferred from '#' cells"
+
+
+def test_trie_finds_word_on_late_game_board_without_overblocking() -> None:
+    board = [
+        "eolbig",
+        "rvrseg",
+        "yust##",
+        "otf###",
+        "a##a##",
+        "n###n#",
+        "######",
+        "######",
+    ]
+    trie = Trie.build_from_words(["gets"])
+
+    paths = trie.find_all_word_paths(board)
+
+    assert paths == [[(1, 5), (1, 4), (2, 3), (1, 3)]]

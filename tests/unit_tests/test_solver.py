@@ -185,6 +185,30 @@ def test_leaves_small_island_blocks_connectivity_across_removed_diagonal_trace()
     assert leaves_small_island(board, removed_path) is True
 
 
+def test_trie_rejects_boot_when_der_diagonal_wall_blocks_path() -> None:
+    # Original board:
+    #   Row 0: t o d
+    #   Row 1: t e b
+    #   Row 2: r o o
+    #
+    # DER was already played: D(0,2)->E(1,1)->R(2,0).
+    # After removal those cells become '#'.
+    # BOOT's only path is B(1,2)->O(2,2)->O(2,1)->T(1,0).
+    # The O(2,1)->T(1,0) step crosses the ghost wall left by E(1,1)->R(2,0).
+    # The solver must infer this wall from the diagonally adjacent '#' cells
+    # and reject BOOT even without explicit blocked_segments from the caller.
+    board_after_der = [
+        "to#",
+        "t#b",
+        "#oo",
+    ]
+
+    trie = Trie.build_from_words(["boot"])
+
+    paths = trie.find_all_word_paths(board_after_der)
+    assert paths == [], "BOOT must be rejected because E->R ghost wall is inferred from '#' cells"
+
+
 def test_trie_rejects_path_crossing_previously_played_word_diagonal_wall() -> None:
     # Original board:
     #   Row 0: H T R A E H
@@ -203,19 +227,10 @@ def test_trie_rejects_path_crossing_previously_played_word_diagonal_wall() -> No
         "u##ier",
         "est#ng",
     ]
-    dwarf_blocked_segments: list[tuple[tuple[int, int], tuple[int, int]]] = [
-        ((3, 3), (2, 2)),  # D -> W
-        ((2, 2), (2, 1)),  # W -> A
-        ((2, 1), (1, 1)),  # A -> R
-        ((1, 1), (1, 2)),  # R -> F
-    ]
 
     trie = Trie.build_from_words(["stir"])
 
-    # Without wall blocking, STIR is reachable.
-    paths_without_walls = trie.find_all_word_paths(board_after_dwarf)
-    assert any(True for _ in paths_without_walls), "STIR should be found without blocked_segments"
-
-    # With DWARF's wall segments, T->I crosses D->W and STIR must not be found.
-    paths_with_walls = trie.find_all_word_paths(board_after_dwarf, dwarf_blocked_segments)
-    assert paths_with_walls == [], "STIR must be rejected when D->W diagonal wall is active"
+    # STIR must be rejected: the '#' cells left by DWARF have diagonally
+    # adjacent pairs that imply the D->W wall; T->I crosses it.
+    paths = trie.find_all_word_paths(board_after_dwarf)
+    assert paths == [], "STIR must be rejected because the D->W ghost wall is inferred from '#' cells"

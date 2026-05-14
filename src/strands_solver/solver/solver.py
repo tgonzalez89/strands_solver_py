@@ -43,15 +43,17 @@ def get_neighbor_coords(board: list[str], row: int, col: int) -> list[BoardCoord
 def leaves_small_island(
     board: list[str],
     removed_path: list[BoardCoord],
-    blocked_segments: list[tuple[BoardCoord, BoardCoord]] | None = None,
+    wall_segments: list[tuple[BoardCoord, BoardCoord]] | None = None,
 ) -> bool:
     """Check whether removing a path creates too-small connected islands.
 
     Args:
         board: Current board rows.
         removed_path: Coordinates treated as removed for this validation check.
-        blocked_segments: Additional diagonal wall segments from previously
-            played words that block connectivity between remaining cells.
+        wall_segments: Pre-computed diagonal walls (blocked-cell pairs plus the
+            current path's own edges) that must not be crossed during the BFS.
+            Callers should build this once and pass it in rather than letting
+            this function recompute it on every recursive call.
 
     Returns:
         True if any remaining connected component has size less than
@@ -59,9 +61,9 @@ def leaves_small_island(
 
     """
     removed_coords = set(removed_path)
-    wall_segments = list(itertools.pairwise(removed_path))
-    if blocked_segments:
-        wall_segments.extend(blocked_segments)
+    effective_walls = list(itertools.pairwise(removed_path))
+    if wall_segments:
+        effective_walls.extend(wall_segments)
     remaining_coords = {
         (row_idx, col_idx)
         for row_idx, row in enumerate(board)
@@ -83,7 +85,8 @@ def leaves_small_island(
             for neighbor in get_neighbor_coords(board, row, col):
                 if neighbor in unseen_coords:
                     if any(
-                        _segments_intersect(coord, neighbor, seg_start, seg_end) for seg_start, seg_end in wall_segments
+                        _segments_intersect(coord, neighbor, seg_start, seg_end)
+                        for seg_start, seg_end in effective_walls
                     ):
                         continue
                     unseen_coords.remove(neighbor)
@@ -147,7 +150,7 @@ class Node:
         board: list[str],
         current_path: list[BoardCoord],
         found_paths: list[list[BoardCoord]],
-        blocked_segments: list[tuple[BoardCoord, BoardCoord]] | None = None,
+        wall_segments: list[tuple[BoardCoord, BoardCoord]],
     ) -> None:
         """Recursively collect valid paths starting from this trie node.
 
@@ -155,11 +158,12 @@ class Node:
             board: Current board rows.
             current_path: Path built so far, ending at this node.
             found_paths: Mutable output list for discovered valid paths.
-            blocked_segments: Diagonal wall segments from previously played
-                words that the current path must not cross.
+            wall_segments: Pre-computed diagonal walls derived from blocked
+                cells on the board.  Steps that cross any of these are
+                rejected, and the list is forwarded to `leaves_small_island`.
 
         """
-        if self.is_word and not leaves_small_island(board, current_path, blocked_segments):
+        if self.is_word and not leaves_small_island(board, current_path, wall_segments):
             found_paths.append(current_path.copy())
 
         current_coord = current_path[-1]
@@ -170,9 +174,9 @@ class Node:
                 continue
             if path_would_self_cross(current_path, next_coord):
                 continue
-            if blocked_segments and any(
+            if any(
                 _segments_intersect(current_coord, next_coord, seg_start, seg_end)
-                for seg_start, seg_end in blocked_segments
+                for seg_start, seg_end in wall_segments
             ):
                 continue
 
@@ -182,7 +186,7 @@ class Node:
                 continue
 
             current_path.append(next_coord)
-            next_node.find_word_paths(board, current_path, found_paths, blocked_segments)
+            next_node.find_word_paths(board, current_path, found_paths, wall_segments)
             current_path.pop()
 
 
@@ -250,23 +254,50 @@ class Trie:
         )
         return [path for _, path in ranked_candidates]
 
-    def find_all_word_paths(
-        self,
-        board: list[str],
-        blocked_segments: list[tuple[BoardCoord, BoardCoord]] | None = None,
-    ) -> list[list[BoardCoord]]:
+    @staticmethod
+    def _get_blocked_cell_wall_segments(board: list[str]) -> list[tuple[BoardCoord, BoardCoord]]:
+        """Return wall segments implied by diagonally adjacent blocked cells.
+
+        When a word is played its cells become blocked (`#`).  Any two
+        consecutive cells in the word's path that are diagonal neighbours
+        leave an invisible wall that remaining cells must not cross.  Since
+        the board no longer stores the original order, we conservatively
+        treat *every* pair of diagonally adjacent `#` cells as a wall
+        segment — they must have been a traversed edge of some prior word.
+
+        Args:
+            board: Current board rows (blocked cells marked with `#`).
+
+        Returns:
+            List of undirected wall segments as ``(coord_a, coord_b)`` pairs.
+
+        """
+        blocked: set[BoardCoord] = {
+            (row_idx, col_idx)
+            for row_idx, row in enumerate(board)
+            for col_idx, char in enumerate(row)
+            if char == BLOCKED_CELL
+        }
+        segments: list[tuple[BoardCoord, BoardCoord]] = []
+        for row, col in blocked:
+            for dr, dc in ((-1, -1), (-1, 1), (1, -1), (1, 1)):
+                neighbor: BoardCoord = (row + dr, col + dc)
+                # Emit each pair once (smaller coord first) to avoid duplicates.
+                if neighbor in blocked and neighbor > (row, col):
+                    segments.append(((row, col), neighbor))
+        return segments
+
+    def find_all_word_paths(self, board: list[str]) -> list[list[BoardCoord]]:
         """Find all valid trie word paths in the given board.
 
         Args:
             board: Board rows.
-            blocked_segments: Diagonal wall segments from previously played
-                words. Any candidate path step that crosses one of these
-                segments is rejected.
 
         Returns:
             List of coordinate paths for all valid matched words.
 
         """
+        wall_segments = self._get_blocked_cell_wall_segments(board)
         found_paths: list[list[BoardCoord]] = []
 
         for row_idx, row in enumerate(board):
@@ -276,6 +307,6 @@ class Trie:
                     continue
 
                 start_coord = (row_idx, col_idx)
-                start_node.find_word_paths(board, [start_coord], found_paths, blocked_segments)
+                start_node.find_word_paths(board, [start_coord], found_paths, wall_segments)
 
         return self._rank_candidate_paths(board, found_paths)

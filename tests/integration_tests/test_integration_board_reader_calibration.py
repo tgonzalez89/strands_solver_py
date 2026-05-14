@@ -5,7 +5,7 @@ import pytest
 import strands_solver.board_reader.board_reader_tesseract_open_cv as board_reader_module
 from strands_solver.device.device_driver import DeviceDriver
 from strands_solver.image_renderer.board_image_renderer import HAS_EXTRAS as HAS_RENDERER_EXTRAS
-from strands_solver.image_renderer.board_image_renderer import render_board_png
+from strands_solver.image_renderer.board_image_renderer import LIGHT_THEME, RenderConfig, render_board_png
 
 if TYPE_CHECKING:
     from strands_solver.util.util import PixelCoord
@@ -43,9 +43,10 @@ def test_integration_calibrate_updates_reader_cell_centers_from_detected_selecti
         "QRSTUV",
     ]
 
-    clear_screen, centers = render_board_png(board, mode="light")
-    top_left_selected_screen, _ = render_board_png(board, mode="light", selection_coords={(0, 0)})
-    bottom_right_selected_screen, _ = render_board_png(board, mode="light", selection_coords={(7, 5)})
+    light_config = RenderConfig(theme=LIGHT_THEME)
+    clear_screen, centers = render_board_png(board, config=light_config)
+    top_left_selected_screen, _ = render_board_png(board, selection_coords={(0, 0)}, config=light_config)
+    bottom_right_selected_screen, _ = render_board_png(board, selection_coords={(7, 5)}, config=light_config)
 
     expected_top_left = centers[(0, 0)]
     expected_bottom_right = centers[(7, 5)]

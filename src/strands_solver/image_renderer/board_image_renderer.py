@@ -71,6 +71,7 @@ class RenderConfig:
     cell_radius_ratio: float = 0.42
     font_size_ratio: float = 0.44
     font_path: Path | None = None
+    theme: Theme | None = None
 
 
 @dataclass(frozen=True)
@@ -88,12 +89,6 @@ class CellDrawContext:
     active_word_coords: set[BoardCoord]
     active_spangram_coords: set[BoardCoord]
     active_selection_coords: set[BoardCoord]
-
-
-THEMES: dict[str, Theme] = {
-    "light": LIGHT_THEME,
-    "dark": DARK_THEME,
-}
 
 
 def build_coord_sets(
@@ -256,7 +251,6 @@ def _draw_board_cells(normalized_rows: list[str], context: CellDrawContext) -> d
 def render_board_png(
     board_rows: list[str],
     *,
-    mode: str,
     config: RenderConfig | None = None,
     **highlight_coords: set[BoardCoord] | None,
 ) -> tuple[bytes, dict[BoardCoord, PixelCoord]]:
@@ -264,7 +258,6 @@ def render_board_png(
 
     Args:
         board_rows: Board rows to render.
-        mode: Rendering mode, `"light"` or `"dark"`.
         highlight_coords: Optional keyword highlight sets using keys
             `word_coords`, `spangram_coords`, and `selection_coords`.
         config: Optional rendering configuration override.
@@ -300,7 +293,7 @@ def render_board_png(
     active_spangram_coords = highlight_coords.get("spangram_coords") or set()
     active_selection_coords = highlight_coords.get("selection_coords") or set()
 
-    theme = THEMES.get(mode, DARK_THEME)
+    theme = cfg.theme or DARK_THEME
     image = PILImage.new("RGB", (cfg.width, cfg.height), color=theme.background_color)
     draw = PILImageDraw.Draw(image)
 

@@ -31,7 +31,7 @@ def test_bot_device_fake_accepts_matching_initial_ocr(monkeypatch: pytest.Monkey
 
     monkeypatch.setattr(board_reader_module.BoardReaderTesseractOpenCV, "extract_state", fake_extract_state)
 
-    bot = BotDeviceFake(board=board, valid_moves=_moves(), mode="light")
+    bot = BotDeviceFake(board=board, valid_moves=_moves())
 
     assert bot.expected_move_count == 2
 
@@ -48,4 +48,4 @@ def test_bot_device_fake_raises_on_initial_ocr_mismatch(monkeypatch: pytest.Monk
     monkeypatch.setattr(board_reader_module.BoardReaderTesseractOpenCV, "extract_state", fake_extract_state)
 
     with pytest.raises(InitialOcrMismatchError, match="Initial OCR board does not match configured fake board"):
-        BotDeviceFake(board=board, valid_moves=_moves(), mode="light")
+        BotDeviceFake(board=board, valid_moves=_moves())

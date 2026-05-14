@@ -5,11 +5,17 @@ from __future__ import annotations
 
 import random
 import shutil
-from dataclasses import dataclass
+from dataclasses import dataclass, replace
 from pathlib import Path
 from string import ascii_uppercase
 
-from strands_solver.image_renderer.board_image_renderer import RenderConfig, render_board_png
+from strands_solver.image_renderer.board_image_renderer import (
+    DARK_THEME,
+    LIGHT_THEME,
+    RenderConfig,
+    Theme,
+    render_board_png,
+)
 
 REPO_ROOT = Path(__file__).resolve().parents[1]
 
@@ -20,12 +26,45 @@ COLS = 6
 ALL_COORDS = {(row, col) for row in range(ROWS) for col in range(COLS)}
 
 
+def _jitter_channel(value: int, delta: int, rng: random.Random) -> int:
+    """Return one RGB channel value with bounded random jitter."""
+    return max(0, min(255, value + rng.randint(-delta, delta)))
+
+
+def _jitter_color(color: tuple[int, int, int], delta: int, rng: random.Random) -> tuple[int, int, int]:
+    """Apply bounded jitter to an RGB color tuple."""
+    return (
+        _jitter_channel(color[0], delta, rng),
+        _jitter_channel(color[1], delta, rng),
+        _jitter_channel(color[2], delta, rng),
+    )
+
+
+def build_randomized_theme(base_theme: Theme, rng: random.Random) -> Theme:
+    """Build a randomized color theme while staying calibration/OCR compatible.
+
+    Notes:
+    - Selection fill color is only jittered by a small amount.
+    - Other colors are jittered more to increase synthetic diversity.
+
+    """
+    return Theme(
+        background_color=_jitter_color(base_theme.background_color, 5, rng),
+        unselected_letter_color=_jitter_color(base_theme.unselected_letter_color, 5, rng),
+        word_fill_color=_jitter_color(base_theme.word_fill_color, 5, rng),
+        word_letter_color=_jitter_color(base_theme.word_letter_color, 5, rng),
+        spangram_fill_color=_jitter_color(base_theme.spangram_fill_color, 5, rng),
+        spangram_letter_color=_jitter_color(base_theme.spangram_letter_color, 5, rng),
+        selection_fill_color=_jitter_color(base_theme.selection_fill_color, 5, rng),
+        selection_letter_color=_jitter_color(base_theme.selection_letter_color, 5, rng),
+    )
+
+
 @dataclass(frozen=True)
 class RenderExampleSpec:
     """Describe one synthetic render invocation."""
 
     image_name: str
-    mode: str
     word_coords: set[tuple[int, int]]
     spangram_coords: set[tuple[int, int]]
     selection_coords: set[tuple[int, int]]
@@ -139,12 +178,13 @@ def render_example(
     write_cell_states_file(example_dir, spec.expected_symbols)
 
     # Use provided config or default
-    config = spec.config or RenderConfig()
+    config = spec.config or RenderConfig(theme=LIGHT_THEME)
+    if config.theme is None:
+        config = replace(config, theme=LIGHT_THEME)
 
     # Render main screenshot with original spec
     png_bytes, centers = render_board_png(
         board_rows,
-        mode=spec.mode,
         word_coords=spec.word_coords,
         spangram_coords=spec.spangram_coords,
         selection_coords=spec.selection_coords,
@@ -155,7 +195,6 @@ def render_example(
     # Render clear.png: full highlights but no selection
     clear_bytes, _ = render_board_png(
         board_rows,
-        mode=spec.mode,
         word_coords=spec.word_coords,
         spangram_coords=spec.spangram_coords,
         selection_coords=set(),
@@ -168,7 +207,6 @@ def render_example(
     tl_spangram_coords = spec.spangram_coords - {(0, 0)}
     top_left_bytes, _ = render_board_png(
         board_rows,
-        mode=spec.mode,
         word_coords=tl_word_coords,
         spangram_coords=tl_spangram_coords,
         selection_coords={(0, 0)},
@@ -182,7 +220,6 @@ def render_example(
     br_spangram_coords = spec.spangram_coords - {br_coord}
     bottom_right_bytes, _ = render_board_png(
         board_rows,
-        mode=spec.mode,
         word_coords=br_word_coords,
         spangram_coords=br_spangram_coords,
         selection_coords={br_coord},
@@ -391,48 +428,27 @@ def generate_baseline_cases() -> None:
     """Generate baseline examples with uniform highlight patterns."""
     baseline_board_rows = build_baseline_board_rows()
     cases = [
-        ("example_synth_baseline_none_light", "light", set(), set(), set(), make_uniform_symbols("N")),
-        ("example_synth_baseline_none_dark", "dark", set(), set(), set(), make_uniform_symbols("N")),
-        ("example_synth_baseline_word", "light", ALL_COORDS, set(), set(), make_uniform_symbols("W")),
-        ("example_synth_baseline_word_dark", "dark", ALL_COORDS, set(), set(), make_uniform_symbols("W")),
-        ("example_synth_baseline_spangram", "light", set(), ALL_COORDS, set(), make_uniform_symbols("S")),
-        (
-            "example_synth_baseline_spangram_dark",
-            "dark",
-            set(),
-            ALL_COORDS,
-            set(),
-            make_uniform_symbols("S"),
-        ),
-        (
-            "example_synth_baseline_selection",
-            "light",
-            set(),
-            set(),
-            ALL_COORDS,
-            make_uniform_symbols("N"),
-        ),
-        (
-            "example_synth_baseline_selection_dark",
-            "dark",
-            set(),
-            set(),
-            ALL_COORDS,
-            make_uniform_symbols("N"),
-        ),
+        ("example_synth_baseline_none_light", LIGHT_THEME, set(), set(), set(), make_uniform_symbols("N")),
+        ("example_synth_baseline_none_dark", DARK_THEME, set(), set(), set(), make_uniform_symbols("N")),
+        ("example_synth_baseline_word", LIGHT_THEME, ALL_COORDS, set(), set(), make_uniform_symbols("W")),
+        ("example_synth_baseline_word_dark", DARK_THEME, ALL_COORDS, set(), set(), make_uniform_symbols("W")),
+        ("example_synth_baseline_spangram", LIGHT_THEME, set(), ALL_COORDS, set(), make_uniform_symbols("S")),
+        ("example_synth_baseline_spangram_dark", DARK_THEME, set(), ALL_COORDS, set(), make_uniform_symbols("S")),
+        ("example_synth_baseline_selection", LIGHT_THEME, set(), set(), ALL_COORDS, make_uniform_symbols("N")),
+        ("example_synth_baseline_selection_dark", DARK_THEME, set(), set(), ALL_COORDS, make_uniform_symbols("N")),
     ]
 
-    for name, mode, word_coords, spangram_coords, selection_coords, expected_symbols in cases:
+    for name, theme, word_coords, spangram_coords, selection_coords, expected_symbols in cases:
         render_example(
             DATA_DIR / name,
             baseline_board_rows,
             RenderExampleSpec(
                 image_name="synthetic.png",
-                mode=mode,
                 word_coords=word_coords,
                 spangram_coords=spangram_coords,
                 selection_coords=selection_coords,
                 expected_symbols=expected_symbols,
+                config=RenderConfig(theme=theme),
             ),
         )
 
@@ -476,14 +492,15 @@ def generate_mixed_cases(count: int = 16, seed: int = 20260513) -> None:
             selection_coords,
         )
 
-        mode = "light" if idx % 2 == 0 else "dark"
+        base_theme = LIGHT_THEME if idx % 2 == 0 else DARK_THEME
         randomized_config, circle_diameter_px = generate_randomized_render_config(rng)
+        randomized_theme = build_randomized_theme(base_theme, rng)
+        randomized_config = replace(randomized_config, theme=randomized_theme)
         render_example(
             example_dir,
             board_rows,
             RenderExampleSpec(
                 image_name="synthetic.png",
-                mode=mode,
                 word_coords=word_coords,
                 spangram_coords=spangram_coords,
                 selection_coords=selection_coords,

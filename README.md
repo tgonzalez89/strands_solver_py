@@ -53,7 +53,7 @@ uv sync --all-extras
 
 3. **Place the wheel** in the `wheels/` directory at the repository root:
    ```
-   strands_solver_py/
+   strands_solver/
    └── wheels/
        └── tesserocr-2.10.0-cp314-cp314-win_amd64.whl
    ```
@@ -78,14 +78,14 @@ uv run pytest --cov=src/strands_solver
 
 Run specific test module:
 ```bash
-uv run pytest tests/test_solver.py
-uv run pytest tests/test_bot.py
-uv run pytest tests/test_util_util.py
+uv run pytest tests/unit_tests/test_solver.py
+uv run pytest tests/unit_tests/test_bot.py
+uv run pytest tests/unit_tests/test_util_util.py
 ```
 
 Run a specific test:
 ```bash
-uv run pytest tests/test_solver.py::test_neighbors_in_bounds
+uv run pytest tests/unit_tests/test_solver.py::test_neighbors_in_bounds
 ```
 
 ### Code Quality Checks
@@ -124,12 +124,13 @@ The extraction tool writes OCR/cell-state logs and per-image debug boards under 
 
 The bot CLI is split into focused commands:
 
-- **File CLI**: `strands_solver`
+- **File CLI**: `strands_solver_file`
 - **Fake-device CLI**: `strands_solver_fake`
 - **ADB-device CLI**: `strands_solver_adb`
 - **Appium-device CLI**: `strands_solver_appium`
+- **Word-discovery CLI**: `strands_words`
 
-#### File CLI (`strands_solver`)
+#### File CLI (`strands_solver_file`)
 
 Required options:
 - `-w, --allowed-words FILE` - Path to allowed words file
@@ -138,7 +139,7 @@ Required options:
 
 Example:
 ```bash
-uv run strands_solver -w <words_file> -b <board_file> -m <moves_file>
+uv run strands_solver_file -w <words_file> -b <board_file> -m <moves_file>
 ```
 
 #### Fake-device CLI (`strands_solver_fake`)
@@ -150,7 +151,7 @@ Required options:
 
 Optional fake options:
 - `--spangram-index N` - 0-based spangram move index (repeatable)
-- `--fake-mode {light,dark}` - Render mode for fake screenshots
+- `--theme {light,dark}` - Render theme for fake screenshots
 - `--tessdata-dir PATH` - Tesseract tessdata directory
 
 Example:
@@ -160,7 +161,7 @@ uv run strands_solver_fake \
    -b <board_file> \
    -m <moves_file> \
    --spangram-index 0 \
-   --fake-mode light
+   --theme light
 ```
 
 #### Appium-device CLI (`strands_solver_appium`)
@@ -190,7 +191,7 @@ Optional ADB options:
 - `--adb-host HOST` - ADB server host (passed as `adb -H`)
 - `--adb-port PORT` - ADB server port (passed as `adb -P`)
 - `--device-serial SERIAL` - ADB device serial
-- `--swipe-duration-ms N` - Swipe duration per segment in milliseconds
+- `--tap-delay-ms N` - Delay between taps in milliseconds
 - `--adb-timeout-s N` - Timeout in seconds per ADB command
 - `--tessdata-dir PATH` - Tesseract tessdata directory
 
@@ -212,6 +213,17 @@ uv run strands_solver_adb \
    --adb-port 5037 \
    --device-serial RF8M12345AB \
    --verbose
+```
+
+#### Word-discovery CLI (`strands_words`)
+
+Required options:
+- `-w, --allowed-words FILE` - Path to allowed words file
+- `-b, --board FILE` - Board file
+
+Example:
+```bash
+uv run strands_words -w data/allowed_words.txt -b data/example1/board.txt
 ```
 
 ---
@@ -317,7 +329,7 @@ uv run strands_solver_fake \
    -b <board_file> \
    -m <moves_file> \
    --spangram-index 0 \
-   --fake-mode light
+   --theme light
 ```
 
 ### Tesseract data path (TESSDATA_PREFIX)
@@ -343,7 +355,7 @@ uv run strands_solver_fake \
    -b data/example1/board.txt \
    -m data/example1/valid_moves.txt \
    --spangram-index 2 \
-   --fake-mode light
+   --theme light
 ```
 
 Example with verbose output:
@@ -354,71 +366,11 @@ uv run strands_solver_fake \
    --board data/example1/board.txt \
    --valid-moves data/example1/valid_moves.txt \
    --spangram-index 2 \
-   --fake-mode light \
+   --theme light \
    --verbose
 ```
 
 Note: appium mode requires Appium server running locally and a real Android device connected via USB. ADB mode requires `adb` installed and a real Android device connected via USB.
-
-### Generating Board State Images
-
-Use `strands_board_image` to render a Strands-like board image from a board file and optional moves file.
-
-**Required arguments:**
-- `--board`: board file path (for example `data/example1/board.txt`)
-- `--output` / `-o`: output image path
-
-**Optional arguments:**
-- `--valid-moves`: moves file path (for example `data/example1/valid_moves.txt`)
-- `--mode`: `dark` (default) or `light`
-- `--spangram-index`: 0-based index of a move to draw as spangram (repeatable)
-
-If a coordinate is not covered by `--valid-moves`, it is rendered with board background color.
-In dark mode, unselected letters are rendered in white.
-
-Install image dependencies if needed:
-```bash
-uv sync --extra device
-```
-
-Generate a dark-mode image:
-```bash
-uv run strands_board_image \
-   --board data/example1/board.txt \
-   --valid-moves data/example1/valid_moves.txt \
-   --spangram-index 0 \
-   --mode dark \
-   --output data/example1_board_dark.png
-```
-
-Generate a light-mode image:
-```bash
-uv run strands_board_image \
-   --board data/example1/board.txt \
-   --valid-moves data/example1/valid_moves.txt \
-   --spangram-index 0 \
-   --mode light \
-   --output data/example1_board_light.png
-```
-
-Useful render tuning options include `--width`, `--height`, `--board-width-ratio`, `--board-height-ratio`, `--board-center-y-ratio`, `--cell-radius-ratio`, and `--font-size-ratio`.
-
-**Verification mode example with provided data:**
-```bash
-uv run strands_solver \
-   -w data/allowed_words.txt \
-   -b data/example1/board.txt \
-   -m data/example1/valid_moves.txt
-```
-
-**Example output:**
-```
-budget: [(0, 1), (0, 2), (1, 2), (2, 2), (2, 3)]
-bargain: [(1, 0), (0, 0), (1, 1), (2, 1), (2, 0), (0, 1), (1, 2)]
-sale: [(2, 0), (1, 0), (0, 0), (0, 1)]
-inexpensive: [(0, 1), (1, 2), (2, 2), (2, 3), (1, 3), (0, 2), (1, 1), (2, 1), (1, 0), (0, 0)]
-affordable: [(0, 1), (1, 1), (1, 2), (0, 2), (2, 2), (1, 3), (0, 3), (1, 0), (0, 0)]
-```
 
 ### Input File Formats
 

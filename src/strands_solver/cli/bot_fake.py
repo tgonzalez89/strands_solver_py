@@ -5,7 +5,7 @@ import sys
 from pathlib import Path
 
 from strands_solver.bot.bot_device_fake import BotDeviceFake, InitialOcrMismatchError
-from strands_solver.image_renderer.board_image_renderer import RenderConfig
+from strands_solver.image_renderer.board_image_renderer import DARK_THEME, LIGHT_THEME, RenderConfig
 from strands_solver.solver.solver import Trie
 from strands_solver.util.util import BoardCoord, load_allowed_words
 
@@ -24,10 +24,10 @@ def parse_args(argv: list[str] | None = None) -> argparse.Namespace:
         help="0-based move index to classify as spangram (repeatable).",
     )
     parser.add_argument(
-        "--fake-mode",
+        "--theme",
         choices=("light", "dark"),
         default="light",
-        help="Rendered board mode for fake screenshots.",
+        help="Rendered board theme for fake screenshots.",
     )
     parser.add_argument(
         "--tessdata-dir",
@@ -51,16 +51,16 @@ def main(argv: list[str] | None = None) -> int:
     trie = Trie.build_from_words(words)
 
     try:
+        theme = LIGHT_THEME if args.theme == "light" else DARK_THEME
         bot = BotDeviceFake(
             board=args.board,
             valid_moves=args.valid_moves,
             spangram_indexes={index for index in args.spangram_index if index >= 0},
-            mode=args.fake_mode,
-            render_config=RenderConfig(),
+            render_config=RenderConfig(theme=theme),
             tessdata_dir=args.tessdata_dir or None,
         )
     except InitialOcrMismatchError as error:
-        print(f"fake_mode_ocr_mismatch: {error}", file=sys.stderr)
+        print(f"fake_theme_ocr_mismatch: {error}", file=sys.stderr)
         return 2
 
     successful_moves = bot.run(trie, verbose=args.verbose)

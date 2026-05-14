@@ -673,6 +673,13 @@ def main() -> int:
         print(f"Input directory not found: {DATA_DIR}")
         return 1
 
+    # Remove OUTPUT_DIR if it exists to start fresh, then recreate it
+    if OUTPUT_DIR.exists():
+        if not OUTPUT_DIR.is_dir():
+            print(f"Output path exists and is not a directory: {OUTPUT_DIR}")
+            return 1
+        shutil.rmtree(OUTPUT_DIR)
+
     OUTPUT_DIR.mkdir(parents=True, exist_ok=True)
 
     example_dirs = iter_example_dirs(DATA_DIR)

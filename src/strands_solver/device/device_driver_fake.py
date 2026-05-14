@@ -1,10 +1,11 @@
 """Fake device driver that generates synthetic Strands screenshots."""
 
+from dataclasses import replace
 from pathlib import Path
 
 from strands_solver.board_reader.board_reader import Highlight
 from strands_solver.device.device_driver import DeviceDriver
-from strands_solver.image_renderer.board_image_renderer import RenderConfig, render_board_png
+from strands_solver.image_renderer.board_image_renderer import LIGHT_THEME, RenderConfig, render_board_png
 from strands_solver.util.util import (
     BoardCoord,
     PixelCoord,
@@ -26,7 +27,6 @@ class DeviceDriverFake(DeviceDriver):
         valid_moves: list[list[BoardCoord]] | Path,
         *,
         spangram_indexes: set[int] | None = None,
-        mode: str = "light",
         render_config: RenderConfig | None = None,
     ) -> None:
         """Initialize a fake screenshot driver from fixtures.
@@ -35,7 +35,6 @@ class DeviceDriverFake(DeviceDriver):
             board: Board rows or path to board fixture.
             valid_moves: Valid move paths or path to move fixture.
             spangram_indexes: Move indexes classified as spangram.
-            mode: Render mode for generated screenshots.
             render_config: Optional rendering configuration.
 
         Raises:
@@ -56,8 +55,9 @@ class DeviceDriverFake(DeviceDriver):
         self._initial_board = loaded_board.copy()
         self._remaining_feedback: dict[tuple[BoardCoord, ...], Highlight] = {}
         self._expected_move_count = len(loaded_moves)
-        self._mode = mode
-        self._render_config = render_config or RenderConfig()
+        self._render_config = render_config or RenderConfig(theme=LIGHT_THEME)
+        if self._render_config.theme is None:
+            self._render_config = replace(self._render_config, theme=LIGHT_THEME)
         self._word_coords: set[BoardCoord] = set()
         self._spangram_coords: set[BoardCoord] = set()
         self._coord_by_pixel: dict[PixelCoord, BoardCoord] = {}
@@ -112,7 +112,6 @@ class DeviceDriverFake(DeviceDriver):
 
         png_bytes, cell_centers = render_board_png(
             ["".join(row) for row in self._board],
-            mode=self._mode,
             word_coords=self._word_coords,
             spangram_coords=self._spangram_coords,
             config=self._render_config,

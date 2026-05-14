@@ -5,7 +5,7 @@ from typing import TYPE_CHECKING
 
 from strands_solver.board_reader.board_reader_tesseract_open_cv import TESSDATA_DIR
 from strands_solver.bot.bot_device_fake import BotDeviceFake
-from strands_solver.image_renderer.board_image_renderer import RenderConfig
+from strands_solver.image_renderer.board_image_renderer import LIGHT_THEME, RenderConfig
 from strands_solver.solver.solver import Trie
 from strands_solver.util.util import BLOCKED_CELL, coords_to_word
 
@@ -80,8 +80,7 @@ def test_integration_bot_device_fake_solves_full_board_with_verbose_output(capsy
         board=board,
         valid_moves=valid_moves,
         spangram_indexes={2},
-        mode="light",
-        render_config=RenderConfig(),
+        render_config=RenderConfig(theme=LIGHT_THEME),
     )
     trie = Trie.build_from_words(allowed_words)
 

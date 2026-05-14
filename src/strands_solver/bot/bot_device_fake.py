@@ -16,13 +16,12 @@ if TYPE_CHECKING:
 class BotDeviceFake(BotDevice):
     """Device bot backed by generated screenshots and real OCR reader."""
 
-    def __init__(  # noqa: PLR0913
+    def __init__(
         self,
         board: list[str] | Path,
         valid_moves: list[list[BoardCoord]] | Path,
         *,
         spangram_indexes: set[int] | None = None,
-        mode: str = "light",
         render_config: RenderConfig | None = None,
         tessdata_dir: str | None = None,
     ) -> None:
@@ -32,7 +31,6 @@ class BotDeviceFake(BotDevice):
             board: Board rows or path to board fixture.
             valid_moves: Valid move paths or path to move fixture.
             spangram_indexes: Move indexes classified as spangram.
-            mode: Render mode for generated screenshots.
             render_config: Optional rendering configuration.
             tessdata_dir: Optional tessdata directory for Tesseract OCR.
 
@@ -41,7 +39,6 @@ class BotDeviceFake(BotDevice):
             board=board,
             valid_moves=valid_moves,
             spangram_indexes=spangram_indexes,
-            mode=mode,
             render_config=render_config,
         )
         initial_board = self._device_driver_fake.initial_board

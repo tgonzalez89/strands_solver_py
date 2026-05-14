@@ -7,6 +7,7 @@ from strands_solver.board_reader.board_reader import Highlight
 from strands_solver.device.device_driver import DeviceDriver
 from strands_solver.image_renderer.board_image_renderer import LIGHT_THEME, RenderConfig, render_board_png
 from strands_solver.util.util import (
+    PIXEL_COORDINATE_MATCH_TOLERANCE_PX,
     BoardCoord,
     PixelCoord,
     load_board,
@@ -14,8 +15,6 @@ from strands_solver.util.util import (
     validate_board,
     validate_move_paths,
 )
-
-PIXEL_MATCH_TOLERANCE = 6
 
 
 class DeviceDriverFake(DeviceDriver):
@@ -145,7 +144,7 @@ class DeviceDriverFake(DeviceDriver):
                     key=lambda item: abs(item[0][0] - pixel[0]) + abs(item[0][1] - pixel[1]),
                 )
                 nearest_distance = abs(nearest_pixel[0] - pixel[0]) + abs(nearest_pixel[1] - pixel[1])
-                if nearest_distance > PIXEL_MATCH_TOLERANCE:
+                if nearest_distance > PIXEL_COORDINATE_MATCH_TOLERANCE_PX:
                     msg = f"pixel not found in current board centers: {pixel}"
                     raise ValueError(msg)
                 coord = nearest_coord

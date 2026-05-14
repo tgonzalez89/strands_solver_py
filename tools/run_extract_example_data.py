@@ -14,6 +14,7 @@ from typing import TYPE_CHECKING
 from strands_solver.board_reader.board_reader import Highlight
 from strands_solver.board_reader.board_reader_tesseract_open_cv import BoardReaderTesseractOpenCV
 from strands_solver.device.device_driver import DeviceDriver
+from strands_solver.util.util import CENTER_TOLERANCE_PX, CIRCLE_DIAMETER_TOLERANCE_PX
 
 if TYPE_CHECKING:
     from strands_solver.util.util import PixelCoord
@@ -163,7 +164,6 @@ def read_reference_circle_diameter(example_dir: Path) -> int | None:
 def validate_circle_diameter(
     estimated: int | None,
     reference: int | None,
-    tolerance_px: int = 3,
 ) -> tuple[str, str]:
     """Compare estimated and reference circle diameters.
 
@@ -177,13 +177,18 @@ def validate_circle_diameter(
         return "NA", "No estimated circle diameter from calibration"
 
     diff = abs(estimated - reference)
-    if diff <= tolerance_px:
-        return "PASS", f"Diameter validated: estimated={estimated}px, reference={reference}px, tol=±{tolerance_px}px"
+    if diff <= CIRCLE_DIAMETER_TOLERANCE_PX:
+        msg = (
+            f"Diameter validated: estimated={estimated}px, "
+            f"reference={reference}px, tol=±{CIRCLE_DIAMETER_TOLERANCE_PX}px"
+        )
+        return "PASS", msg
 
-    return (
-        "FAIL",
-        f"Diameter mismatch: estimated={estimated}px, reference={reference}px, diff={diff}px, tol=±{tolerance_px}px",
+    msg = (
+        f"Diameter mismatch: estimated={estimated}px, reference={reference}px, "
+        f"diff={diff}px, tol=±{CIRCLE_DIAMETER_TOLERANCE_PX}px"
     )
+    return "FAIL", msg
 
 
 class ReplayDriver(DeviceDriver):
@@ -254,17 +259,21 @@ def try_calibrate_and_validate(
     cols = reader._cols  # noqa: SLF001
     reference_centers = read_reference_centers(example_dir)
     if reference_centers is None:
-        return CalibrationResult(status="NA", message="Calibration succeeded but centers.txt is missing")
+        msg = "Calibration succeeded but centers.txt is missing"
+        return CalibrationResult(status="NA", message=msg)
 
     # Compare calibrated corners vs reference
-    tol = 3
     tl_ref = reference_centers[(0, 0)]
     br_ref = reference_centers[(rows - 1, cols - 1)]
     tl_calib = reader._top_left_cell_center  # noqa: SLF001
     br_calib = reader._bottom_right_cell_center  # noqa: SLF001
 
-    tl_match = abs(tl_calib[0] - tl_ref[0]) <= tol and abs(tl_calib[1] - tl_ref[1]) <= tol
-    br_match = abs(br_calib[0] - br_ref[0]) <= tol and abs(br_calib[1] - br_ref[1]) <= tol
+    tl_match = (
+        abs(tl_calib[0] - tl_ref[0]) <= CENTER_TOLERANCE_PX and abs(tl_calib[1] - tl_ref[1]) <= CENTER_TOLERANCE_PX
+    )
+    br_match = (
+        abs(br_calib[0] - br_ref[0]) <= CENTER_TOLERANCE_PX and abs(br_calib[1] - br_ref[1]) <= CENTER_TOLERANCE_PX
+    )
 
     if tl_match and br_match:
         msg = f"Calibration validated: TL {tl_calib} vs {tl_ref}, BR {br_calib} vs {br_ref}"

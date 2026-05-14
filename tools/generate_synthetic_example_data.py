@@ -16,6 +16,7 @@ from strands_solver.image_renderer.board_image_renderer import (
     Theme,
     render_board_png,
 )
+from strands_solver.util.util import CIRCLE_COLOR_CHANNEL_TOLERANCE
 
 REPO_ROOT = Path(__file__).resolve().parents[1]
 
@@ -48,15 +49,16 @@ def build_randomized_theme(base_theme: Theme, rng: random.Random) -> Theme:
     - Other colors are jittered more to increase synthetic diversity.
 
     """
+    delta = CIRCLE_COLOR_CHANNEL_TOLERANCE
     return Theme(
-        background_color=_jitter_color(base_theme.background_color, 5, rng),
-        unselected_letter_color=_jitter_color(base_theme.unselected_letter_color, 5, rng),
-        word_fill_color=_jitter_color(base_theme.word_fill_color, 5, rng),
-        word_letter_color=_jitter_color(base_theme.word_letter_color, 5, rng),
-        spangram_fill_color=_jitter_color(base_theme.spangram_fill_color, 5, rng),
-        spangram_letter_color=_jitter_color(base_theme.spangram_letter_color, 5, rng),
-        selection_fill_color=_jitter_color(base_theme.selection_fill_color, 5, rng),
-        selection_letter_color=_jitter_color(base_theme.selection_letter_color, 5, rng),
+        background_color=_jitter_color(base_theme.background_color, delta, rng),
+        unselected_letter_color=_jitter_color(base_theme.unselected_letter_color, delta, rng),
+        word_fill_color=_jitter_color(base_theme.word_fill_color, delta, rng),
+        word_letter_color=_jitter_color(base_theme.word_letter_color, delta, rng),
+        spangram_fill_color=_jitter_color(base_theme.spangram_fill_color, delta, rng),
+        spangram_letter_color=_jitter_color(base_theme.spangram_letter_color, delta, rng),
+        selection_fill_color=_jitter_color(base_theme.selection_fill_color, delta, rng),
+        selection_letter_color=_jitter_color(base_theme.selection_letter_color, delta, rng),
     )
 
 
@@ -309,7 +311,7 @@ def generate_randomized_render_config(rng: random.Random) -> tuple[RenderConfig,
 
     """
     image_margin_ratio = 0.025
-    min_board_fill_ratio = 0.70
+    min_board_fill_ratio = 0.60
     max_board_fill_ratio = 0.95
 
     # Step 1: Choose image size from smaller dimension + aspect ratio.
@@ -361,10 +363,10 @@ def generate_randomized_render_config(rng: random.Random) -> tuple[RenderConfig,
 
     # Step 7: Circle diameter and font size as ratios of the smaller cell dimension.
     min_cell_dimension = min(cell_width_px, cell_height_px)
-    min_circle_diameter_px = 0.60 * min_cell_dimension
+    min_circle_diameter_px = 0.65 * min_cell_dimension
     max_circle_diameter_px = 0.90 * min_cell_dimension
     circle_diameter_px = rng.uniform(min_circle_diameter_px, max_circle_diameter_px)
-    font_size_px = rng.uniform(0.35 * min_cell_dimension, 0.40 * min_cell_dimension)
+    font_size_px = rng.uniform(0.30 * min_cell_dimension, 0.38 * min_cell_dimension)
 
     cell_radius_ratio = (circle_diameter_px / 2.0) / min_cell_dimension
     font_size_ratio = font_size_px / min_cell_dimension

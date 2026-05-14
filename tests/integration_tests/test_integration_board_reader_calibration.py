@@ -6,6 +6,7 @@ import strands_solver.board_reader.board_reader_tesseract_open_cv as board_reade
 from strands_solver.device.device_driver import DeviceDriver
 from strands_solver.image_renderer.board_image_renderer import HAS_EXTRAS as HAS_RENDERER_EXTRAS
 from strands_solver.image_renderer.board_image_renderer import LIGHT_THEME, RenderConfig, render_board_png
+from strands_solver.util.util import CENTER_TOLERANCE_PX, CIRCLE_DIAMETER_TOLERANCE_PX
 
 if TYPE_CHECKING:
     from strands_solver.util.util import PixelCoord
@@ -72,10 +73,10 @@ def test_integration_calibrate_updates_reader_cell_centers_from_detected_selecti
     calibrated_top_left = reader._cell_centers[0][0]
     calibrated_bottom_right = reader._cell_centers[7][5]
 
-    assert abs(calibrated_top_left[0] - expected_top_left[0]) <= 3
-    assert abs(calibrated_top_left[1] - expected_top_left[1]) <= 3
-    assert abs(calibrated_bottom_right[0] - expected_bottom_right[0]) <= 3
-    assert abs(calibrated_bottom_right[1] - expected_bottom_right[1]) <= 3
-    assert abs(reader.get_estimated_circle_diameter() - expected_circle_diameter) <= 3
+    assert abs(calibrated_top_left[0] - expected_top_left[0]) <= CENTER_TOLERANCE_PX
+    assert abs(calibrated_top_left[1] - expected_top_left[1]) <= CENTER_TOLERANCE_PX
+    assert abs(calibrated_bottom_right[0] - expected_bottom_right[0]) <= CENTER_TOLERANCE_PX
+    assert abs(calibrated_bottom_right[1] - expected_bottom_right[1]) <= CENTER_TOLERANCE_PX
+    assert abs(reader.get_estimated_circle_diameter() - expected_circle_diameter) <= CIRCLE_DIAMETER_TOLERANCE_PX
     assert driver.taps == [expected_top_left, expected_bottom_right]
     assert driver._screenshots == []

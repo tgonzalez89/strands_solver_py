@@ -18,6 +18,17 @@ COORD_PARTS_COUNT: Final = 2
 BLOCKED_CELL: Final = "#"
 VALID_BOARD_CHARS: Final = frozenset(ascii_lowercase + BLOCKED_CELL)
 
+# Tolerances for pixel matching and geometric validation
+# Max pixel deviation for board/circle center positions in calibration and detection.
+CENTER_TOLERANCE_PX: Final = 3
+# Max pixel deviation for circle diameter in detection and validation.
+CIRCLE_DIAMETER_TOLERANCE_PX: Final = 3
+# RGB channel tolerance for matching selection circle color in inRange().
+# Kept at 5 to stay compatible with synthetic theme color jitter.
+CIRCLE_COLOR_CHANNEL_TOLERANCE: Final = 3
+# Max Manhattan distance (pixels) for fake device coordinate matching.
+PIXEL_COORDINATE_MATCH_TOLERANCE_PX: Final = CENTER_TOLERANCE_PX * 2
+
 
 def load_allowed_words(allowed_words_path: Path) -> list[str]:
     """Load and normalize allowed words from disk.

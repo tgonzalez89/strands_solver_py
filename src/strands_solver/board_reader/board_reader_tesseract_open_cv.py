@@ -8,7 +8,7 @@ from typing import TYPE_CHECKING, Final, cast
 
 from strands_solver.board_reader.board_reader import Highlight
 from strands_solver.board_reader.board_reader_base import BoardReaderBase
-from strands_solver.util.util import board_to_text
+from strands_solver.util.util import CIRCLE_COLOR_CHANNEL_TOLERANCE, board_to_text
 
 try:
     import cv2
@@ -224,7 +224,7 @@ class BoardReaderTesseractOpenCV(BoardReaderBase):
     def _detect_selection_contours(image: object) -> list[tuple[PixelCoord, float]]:
         """Detect SELECTION_COLOR blobs and return each blob's centroid and diameter.
 
-        Applies a color-range mask around SELECTION_COLOR (±4 per channel),
+        Applies a color-range mask around SELECTION_COLOR (within a tolerance),
         morphological opening for noise removal, and contour filtering by area.
         Diameter is estimated from the minimum enclosing circle of each contour.
 
@@ -239,7 +239,7 @@ class BoardReaderTesseractOpenCV(BoardReaderBase):
 
         # SELECTION_COLOR is RGB; convert to BGR for OpenCV.
         r, g, b = SELECTION_COLOR
-        tol = 4
+        tol = CIRCLE_COLOR_CHANNEL_TOLERANCE
         lower = np.array([max(b - tol, 0), max(g - tol, 0), max(r - tol, 0)], dtype=np.uint8)
         upper = np.array([min(b + tol, 255), min(g + tol, 255), min(r + tol, 255)], dtype=np.uint8)
 
@@ -440,6 +440,9 @@ class BoardReaderTesseractOpenCV(BoardReaderBase):
             for row in range(self._rows):
                 row_chars = list(board[row])
                 for col in range(self._cols):
+                    if board[row][col] != "?":
+                        continue
+
                     x_start = col * self._cell_width
                     y_start = row * self._cell_height
                     cell_img = board_img[y_start : y_start + self._cell_height, x_start : x_start + self._cell_width]

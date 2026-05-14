@@ -14,7 +14,7 @@ if TYPE_CHECKING:
 class Bot(ABC):
     """Abstract interface for a Strands game adapter."""
 
-    _FALLBACK_MAX_OPEN_CELLS = 10
+    _FALLBACK_MAX_OPEN_CELLS = 16
 
     @abstractmethod
     def get_board(self) -> list[str]:

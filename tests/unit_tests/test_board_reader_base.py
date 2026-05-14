@@ -67,7 +67,7 @@ def test_board_reader_base_reuses_previous_board_when_cell_states_unchanged() ->
     assert reader.board_calls == 1
 
 
-def test_board_reader_base_reextracts_board_when_cell_states_change() -> None:
+def test_board_reader_base_keeps_cached_board_when_cell_states_change() -> None:
     reader = _DummyReader()
 
     first = reader.extract_state(b"one")
@@ -75,7 +75,8 @@ def test_board_reader_base_reextracts_board_when_cell_states_change() -> None:
     second = reader.extract_state(b"two")
 
     assert first.cell_states != second.cell_states
-    assert reader.board_calls == 2
+    assert first.board == second.board
+    assert reader.board_calls == 1
 
 
 def test_board_reader_base_rejects_empty_screenshot() -> None:

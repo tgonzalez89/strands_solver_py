@@ -148,7 +148,7 @@ def test_leaves_small_island_returns_false_when_islands_big_enough() -> None:
     assert leaves_small_island(board, removed_path) is False
 
 
-def test_leaves_small_island_treats_diagonal_chain_as_connected() -> None:
+def test_leaves_small_island_treats_diagonal_chain_as_connected_when_no_trace_wall_intersects() -> None:
     board = [
         "abcd",
         "efgh",
@@ -157,17 +157,29 @@ def test_leaves_small_island_treats_diagonal_chain_as_connected() -> None:
     ]
     removed_path = [
         (0, 1),
-        (0, 2),
-        (0, 3),
-        (1, 0),
         (1, 2),
-        (1, 3),
-        (2, 0),
         (2, 1),
-        (2, 3),
-        (3, 0),
-        (3, 1),
         (3, 2),
     ]
 
     assert leaves_small_island(board, removed_path) is False
+
+
+def test_leaves_small_island_blocks_connectivity_across_removed_diagonal_trace() -> None:
+    board = [
+        "EEWHKC",
+        "VRNAPU",
+        "SPUTLG",
+        "KNTITE",
+    ]
+    removed_path = [
+        (0, 4),  # K
+        (1, 5),  # U
+        (2, 4),  # L
+        (2, 3),  # T
+        (2, 2),  # U
+        (1, 1),  # R
+        (2, 0),  # S
+    ]
+
+    assert leaves_small_island(board, removed_path) is True

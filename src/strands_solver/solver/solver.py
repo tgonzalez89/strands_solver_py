@@ -1,5 +1,6 @@
 """Trie-based solver utilities for finding valid word paths on a board."""
 
+import itertools
 from dataclasses import dataclass, field
 from typing import Self
 
@@ -52,6 +53,7 @@ def leaves_small_island(board: list[str], removed_path: list[BoardCoord]) -> boo
 
     """
     removed_coords = set(removed_path)
+    removed_segments = list(itertools.pairwise(removed_path))
     remaining_coords = {
         (row_idx, col_idx)
         for row_idx, row in enumerate(board)
@@ -66,11 +68,17 @@ def leaves_small_island(board: list[str], removed_path: list[BoardCoord]) -> boo
         stack = [start_coord]
 
         while stack:
-            row, col = stack.pop()
+            coord = stack.pop()
             island_size += 1
 
+            row, col = coord
             for neighbor in get_neighbor_coords(board, row, col):
                 if neighbor in unseen_coords:
+                    if any(
+                        _segments_intersect(coord, neighbor, seg_start, seg_end)
+                        for seg_start, seg_end in removed_segments
+                    ):
+                        continue
                     unseen_coords.remove(neighbor)
                     stack.append(neighbor)
 

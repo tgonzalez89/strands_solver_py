@@ -24,7 +24,7 @@ def parse_args(argv: list[str] | None = None) -> argparse.Namespace:
         "--tap-delay-ms",
         dest="tap_delay_ms",
         type=int,
-        default=100,
+        default=10,
         help="Delay in ms between taps.",
     )
     parser.add_argument("--adb-timeout-s", type=float, default=10.0, help="Timeout in seconds per adb command.")

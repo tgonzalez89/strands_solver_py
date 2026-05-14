@@ -39,7 +39,7 @@ def test_appium_driver_execute_path_single_point_uses_degenerate_swipe() -> None
 
     driver.execute_path([(10, 20)])
 
-    assert session.swipes == [(10, 20, 10, 20, 100)]
+    assert session.swipes == [(10, 20, 10, 20, 10)]
 
 
 def test_appium_driver_execute_path_raises_for_empty_path() -> None:

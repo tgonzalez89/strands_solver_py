@@ -20,7 +20,7 @@ class DeviceDriverADB(DeviceDriver):
         adb_server_host: str | None = None,
         adb_server_port: int | None = None,
         device_serial: str | None = None,
-        tap_delay_ms: int = 100,
+        tap_delay_ms: int = 10,
         swipe_duration_ms: int | None = None,
         command_timeout_s: float = 10.0,
     ) -> None:

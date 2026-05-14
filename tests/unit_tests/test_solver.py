@@ -183,3 +183,39 @@ def test_leaves_small_island_blocks_connectivity_across_removed_diagonal_trace()
     ]
 
     assert leaves_small_island(board, removed_path) is True
+
+
+def test_trie_rejects_path_crossing_previously_played_word_diagonal_wall() -> None:
+    # Original board:
+    #   Row 0: H T R A E H
+    #   Row 1: Q R F R S I
+    #   Row 2: U A W I E R
+    #   Row 3: E S T D N G
+    #
+    # DWARF was played: D(3,3)->W(2,2)->A(2,1)->R(1,1)->F(1,2).
+    # After removal those cells become '#'.
+    # STIR path S(3,1)->T(3,2)->I(2,3)->R(1,3) is the only possible path,
+    # but the T->I step crosses the ghost diagonal wall left by D->W.
+    # Without blocked_segments the path is found; with them it must be rejected.
+    board_after_dwarf = [
+        "htraeh",
+        "q##rsi",
+        "u##ier",
+        "est#ng",
+    ]
+    dwarf_blocked_segments: list[tuple[tuple[int, int], tuple[int, int]]] = [
+        ((3, 3), (2, 2)),  # D -> W
+        ((2, 2), (2, 1)),  # W -> A
+        ((2, 1), (1, 1)),  # A -> R
+        ((1, 1), (1, 2)),  # R -> F
+    ]
+
+    trie = Trie.build_from_words(["stir"])
+
+    # Without wall blocking, STIR is reachable.
+    paths_without_walls = trie.find_all_word_paths(board_after_dwarf)
+    assert any(True for _ in paths_without_walls), "STIR should be found without blocked_segments"
+
+    # With DWARF's wall segments, T->I crosses D->W and STIR must not be found.
+    paths_with_walls = trie.find_all_word_paths(board_after_dwarf, dwarf_blocked_segments)
+    assert paths_with_walls == [], "STIR must be rejected when D->W diagonal wall is active"

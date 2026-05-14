@@ -36,7 +36,7 @@ class AppiumSession(Protocol):
 class DeviceDriverAppium(DeviceDriver):
     """Appium driver for screenshot and path-gesture execution."""
 
-    def __init__(self, session: AppiumSession | None = None, swipe_duration_ms: int = 100) -> None:
+    def __init__(self, session: AppiumSession | None = None, swipe_duration_ms: int = 10) -> None:
         """Initialize the Appium-backed driver.
 
         Args:

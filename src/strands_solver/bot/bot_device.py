@@ -89,4 +89,14 @@ class BotDevice(Bot):
         self._driver.execute_path(pixel_path)
         after_state = self.refresh_state()
         feedback = self._reader.classify_feedback(before_state, after_state, move)
+        # Set all cell states of the move to the result of the feedback.
+        # This ensures that subsequent calls to get_board() will reflect the expected blocked cells.
+        for row_idx, col_idx in move:
+            if (
+                after_state.cell_states is not None
+                and row_idx < len(after_state.cell_states)
+                and col_idx < len(after_state.cell_states[row_idx])
+            ):
+                after_state.cell_states[row_idx][col_idx] = feedback
+        self._state = after_state
         return feedback in {Highlight.WORD, Highlight.SPANGRAM}

@@ -1,6 +1,5 @@
 """Grid-aware base class for screenshot-based board readers."""
 
-import zlib
 from abc import abstractmethod
 from typing import TYPE_CHECKING
 
@@ -40,9 +39,8 @@ class BoardReaderBase(BoardReader):
 
         self._rows = rows
         self._cols = cols
-        self._last_screenshot_hash: int | None = None
-        self._last_state: BoardState | None = None
         self._cell_centers: list[list[PixelCoord]] = []
+        self._board: list[str] | None = None
 
     # ------------------------------------------------------------------
     # Abstract hooks - implemented by concrete subclasses
@@ -122,22 +120,16 @@ class BoardReaderBase(BoardReader):
             msg = "screenshot cannot be empty"
             raise ValueError(msg)
 
-        screenshot_hash = zlib.crc32(screenshot)
-        if self._last_screenshot_hash == screenshot_hash and self._last_state is not None:
-            return self._last_state
-
         image = self._decode_image(screenshot)
         cell_states = self._extract_cell_states(image)
 
         # These two are only needed once.
         if not self._cell_centers:
             self._cell_centers = self._extract_cell_centers(image)
-        board = self._extract_board_rows(image) if self._last_state is None else self._last_state.board
+        if not self._board:
+            self._board = self._extract_board_rows(image)
 
-        state = BoardState(board, cell_states)
-        self._last_screenshot_hash = screenshot_hash
-        self._last_state = state
-        return state
+        return BoardState(self._board, cell_states)
 
     def classify_feedback(self, before: BoardState, after: BoardState, move: list[BoardCoord]) -> Highlight:
         """Classify move outcome by comparing cell states before and after.

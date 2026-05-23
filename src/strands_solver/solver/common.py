@@ -68,10 +68,24 @@ def get_neighbor_coords(board: list[str], row: int, col: int) -> list[BoardCoord
     return neighbors
 
 
-def leaves_small_island(board: list[str], removed_path: list[BoardCoord]) -> bool:
-    """Check whether removing a path creates too-small connected islands."""
+def leaves_small_island(
+    board: list[str],
+    removed_path: list[BoardCoord],
+    wall_segments: list[tuple[BoardCoord, BoardCoord]] | None = None,
+) -> bool:
+    """Check whether removing a path creates too-small connected islands.
+
+    Args:
+        board: Current board state.
+        removed_path: The candidate path being evaluated.
+        wall_segments: Additional diagonal wall segments from previously accepted
+            moves that restrict connectivity between cells.
+
+    """
     removed_coords = set(removed_path)
     effective_walls = list(itertools.pairwise(removed_path))
+    if wall_segments:
+        effective_walls.extend(wall_segments)
     remaining_coords = {
         (row_idx, col_idx)
         for row_idx, row in enumerate(board)

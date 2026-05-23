@@ -86,7 +86,7 @@ def find_all_spangram_paths(  # noqa: C901
             len(current_path) >= MIN_WORD_LEN
             and any(node.is_word for node in active_nodes)
             and is_spangram_path(board, current_path)
-            and (not search_options.reject_small_islands or not leaves_small_island(board, current_path))
+            and (not search_options.reject_small_islands or not leaves_small_island(board, current_path, wall_segments))
         ):
             found_paths.append(current_path.copy())
 

@@ -1,3 +1,7 @@
+from __future__ import annotations
+
+from typing import TYPE_CHECKING
+
 from strands_solver.solver.solver import (
     DictionarySolverOptions,
     SpangramSolverOptions,
@@ -6,6 +10,9 @@ from strands_solver.solver.solver import (
     leaves_small_island,
 )
 from strands_solver.solver.spangram_solver import find_all_spangram_paths
+
+if TYPE_CHECKING:
+    from strands_solver.util.util import BoardCoord
 
 
 def test_get_neighbor_coords_center_has_8_neighbors() -> None:
@@ -190,6 +197,32 @@ def test_leaves_small_island_blocks_connectivity_across_removed_diagonal_trace()
     ]
 
     assert leaves_small_island(board, removed_path) is True
+
+
+def test_leaves_small_island_respects_historical_wall_segments() -> None:
+    # Board (2 cols, 5 rows):
+    #
+    #   Row 0: a #   ← col 1 is already blocked
+    #   Row 1: # b   ← col 0 is already blocked
+    #   Row 2: c d
+    #   Row 3: e f
+    #   Row 4: g h
+    #
+    # a(0,0)'s ONLY open neighbor is b(1,1) diagonally.
+    # The historical wall segment (1,0)→(0,1) from a previously accepted move
+    # blocks the crossing diagonal (0,0)→(1,1), isolating 'a'.
+    #
+    # Candidate path removes g(4,0) and h(4,1).
+    # Remaining open cells: a(0,0), b(1,1), c(2,0), d(2,1), e(3,0), f(3,1) = 6.
+    #
+    # Without the historical wall: a→b connected → all 6 cells in one island → False.
+    # With the historical wall:    a is isolated (size=1 < MIN_WORD_LEN) → True.
+    board = ["a#", "#b", "cd", "ef", "gh"]
+    removed_path: list[BoardCoord] = [(4, 0), (4, 1)]
+    historical_wall: list[tuple[BoardCoord, BoardCoord]] = [((1, 0), (0, 1))]
+
+    assert leaves_small_island(board, removed_path) is False
+    assert leaves_small_island(board, removed_path, historical_wall) is True
 
 
 def test_trie_rejects_boot_when_der_diagonal_wall_blocks_path() -> None:

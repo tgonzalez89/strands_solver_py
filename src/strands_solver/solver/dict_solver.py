@@ -31,7 +31,9 @@ class Node:
         options: DictionarySolverOptions,
     ) -> None:
         """Recursively collect valid paths starting from this trie node."""
-        if self.is_word and (not options.reject_small_islands or not leaves_small_island(board, current_path)):
+        if self.is_word and (
+            not options.reject_small_islands or not leaves_small_island(board, current_path, wall_segments)
+        ):
             found_paths.append(current_path.copy())
 
         current_coord = current_path[-1]

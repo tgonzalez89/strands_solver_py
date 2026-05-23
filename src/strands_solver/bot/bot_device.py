@@ -4,7 +4,7 @@ from typing import TYPE_CHECKING
 
 from strands_solver.board_reader.board_reader import BoardReader, BoardState, Highlight
 from strands_solver.bot.bot import Bot
-from strands_solver.util.util import BLOCKED_CELL, validate_board
+from strands_solver.util.util import BLOCKED_CELL, SPANGRAM_BLOCKED_CELL, validate_board
 
 if TYPE_CHECKING:
     from strands_solver.device.device_driver import DeviceDriver
@@ -68,7 +68,9 @@ class BotDevice(Bot):
                     continue
                 if row_idx >= len(board_chars) or col_idx >= len(board_chars[row_idx]):
                     continue
-                board_chars[row_idx][col_idx] = BLOCKED_CELL
+                board_chars[row_idx][col_idx] = (
+                    SPANGRAM_BLOCKED_CELL if highlight == Highlight.SPANGRAM else BLOCKED_CELL
+                )
 
         return ["".join(row) for row in board_chars]
 

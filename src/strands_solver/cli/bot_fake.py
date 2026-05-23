@@ -48,7 +48,9 @@ def main(argv: list[str] | None = None) -> int:
     args = parse_args(argv)
 
     words = load_allowed_words(args.allowed_words)
+    spangram_words = load_allowed_words(args.allowed_words, min_word_len=1)
     trie = Trie.build_from_words(words)
+    spangram_trie = Trie.build_from_words(spangram_words)
 
     try:
         theme = LIGHT_THEME if args.theme == "light" else DARK_THEME
@@ -63,7 +65,7 @@ def main(argv: list[str] | None = None) -> int:
         print(f"fake_theme_ocr_mismatch: {error}", file=sys.stderr)
         return 2
 
-    successful_moves = bot.run(trie, verbose=args.verbose)
+    successful_moves = bot.run(trie, spangram_trie=spangram_trie, verbose=args.verbose)
     _print_successful_moves(successful_moves)
 
     print(f"matched={len(successful_moves)}/{bot.expected_move_count}")

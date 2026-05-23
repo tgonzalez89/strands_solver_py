@@ -16,7 +16,9 @@ MIN_BOARD_DIMENSION: Final = MIN_WORD_LEN
 MAX_BOARD_DIMENSION: Final = 10
 COORD_PARTS_COUNT: Final = 2
 BLOCKED_CELL: Final = "#"
-VALID_BOARD_CHARS: Final = frozenset(ascii_lowercase + BLOCKED_CELL)
+SPANGRAM_BLOCKED_CELL: Final = "$"
+BLOCKED_CELLS: Final = frozenset({BLOCKED_CELL, SPANGRAM_BLOCKED_CELL})
+VALID_BOARD_CHARS: Final = frozenset(ascii_lowercase + "".join(sorted(BLOCKED_CELLS)))
 
 # Tolerances for pixel matching and geometric validation
 # Max pixel deviation for board/circle center positions in calibration and detection.
@@ -30,14 +32,15 @@ CIRCLE_COLOR_CHANNEL_TOLERANCE: Final = 3
 PIXEL_COORDINATE_MATCH_TOLERANCE_PX: Final = CENTER_TOLERANCE_PX * 2
 
 
-def load_allowed_words(allowed_words_path: Path) -> list[str]:
+def load_allowed_words(allowed_words_path: Path, *, min_word_len: int = MIN_WORD_LEN) -> list[str]:
     """Load and normalize allowed words from disk.
 
     Args:
         allowed_words_path: Path to file with one word per line.
+        min_word_len: Minimum word length to include.
 
     Returns:
-        Lowercased words with length greater than or equal to `MIN_WORD_LEN`.
+        Lowercased words with length greater than or equal to `min_word_len`.
 
     """
     result: list[str] = []
@@ -45,7 +48,7 @@ def load_allowed_words(allowed_words_path: Path) -> list[str]:
     with allowed_words_path.open() as f:
         for line in f:
             word = line.strip().lower()
-            if len(word) >= MIN_WORD_LEN:
+            if len(word) >= min_word_len:
                 result.append(word)
 
     return result
@@ -223,7 +226,7 @@ def generate_random_board(
         raise ValueError(msg)
 
     generator = rng or Random()
-    alphabet = ascii_lowercase + (BLOCKED_CELL if include_blocked else "")
+    alphabet = ascii_lowercase + ("".join(sorted(BLOCKED_CELLS)) if include_blocked else "")
     return ["".join(generator.choice(alphabet) for _ in range(cols)) for _ in range(rows)]
 
 

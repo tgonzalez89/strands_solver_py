@@ -3,18 +3,26 @@
 from abc import ABC, abstractmethod
 from typing import TYPE_CHECKING
 
-from strands_solver.solver.solver import get_neighbor_coords, path_would_self_cross
-from strands_solver.util.util import BLOCKED_CELL, MIN_WORD_LEN, board_to_text, coords_to_word
+from strands_solver.solver.dict_solver import DictionarySolverOptions
+from strands_solver.solver.open_path_solver import OpenPathSolverOptions, find_all_open_paths
+from strands_solver.solver.solver import (
+    board_has_spangram,
+    diagonal_wall_segments,
+    has_open_cells,
+    open_cell_count,
+)
+from strands_solver.solver.spangram_solver import SpangramSolverOptions, find_all_spangram_paths
+from strands_solver.util.util import MIN_WORD_LEN, board_to_text, coords_to_word
 
 if TYPE_CHECKING:
-    from strands_solver.solver.solver import Trie
+    from strands_solver.solver.dict_solver import Trie
     from strands_solver.util.util import BoardCoord
 
 
 class Bot(ABC):
     """Abstract interface for a Strands game adapter."""
 
-    _FALLBACK_MAX_OPEN_CELLS = 16
+    _FALLBACK_MAX_OPEN_CELLS = 19
 
     @abstractmethod
     def get_board(self) -> list[str]:
@@ -37,74 +45,272 @@ class Bot(ABC):
 
         """
 
-    @staticmethod
-    def _has_open_cells(board: list[str]) -> bool:
-        """Return whether the board still has non-blocked cells."""
-        return any(char != BLOCKED_CELL for row in board for char in row)
-
-    @staticmethod
-    def _open_cell_count(board: list[str]) -> int:
-        """Return the number of non-blocked cells on the board."""
-        return sum(1 for row in board for char in row if char != BLOCKED_CELL)
-
-    @staticmethod
-    def _diagonal_wall_segments(
+    def _current_wall_segments(
+        self,
         successful_moves: list[tuple[str, list[BoardCoord]]],
-    ) -> list[tuple[BoardCoord, BoardCoord]]:
-        """Return diagonal segments from already accepted moves."""
-        return [
-            (path[idx], path[idx + 1])
-            for _, path in successful_moves
-            for idx in range(len(path) - 1)
-            if abs(path[idx + 1][0] - path[idx][0]) == 1 and abs(path[idx + 1][1] - path[idx][1]) == 1
-        ]
+        *,
+        use_wall_segments: bool,
+    ) -> list[tuple[BoardCoord, BoardCoord]] | None:
+        """Return currently active diagonal wall segments for a solver phase."""
+        if not use_wall_segments:
+            return None
+        return diagonal_wall_segments(successful_moves) or None
 
-    @staticmethod
-    def _all_open_paths(  # noqa: C901
+    def _try_candidate_paths(  # noqa: PLR0913
+        self,
         board: list[str],
-        wall_segments: list[tuple[BoardCoord, BoardCoord]] | None = None,
-    ) -> list[list[BoardCoord]]:
-        """Enumerate all non-crossing open-cell paths of length >= `MIN_WORD_LEN`."""
-        found_paths: list[list[BoardCoord]] = []
+        candidate_paths: list[list[BoardCoord]],
+        successful_moves: list[tuple[str, list[BoardCoord]]],
+        *,
+        verbose: bool,
+        label: str,
+        failed_words: set[str] | None = None,
+    ) -> bool:
+        """Try candidate paths until one is accepted."""
+        for path in candidate_paths:
+            word = coords_to_word(board, path)
+            if failed_words is not None and word in failed_words:
+                if verbose:
+                    print(f"[VERBOSE] {label}: skipping cached failed word '{word}'.")
+                continue
+            if verbose:
+                print(f"[VERBOSE] {label}: trying '{word}' with path {path}")
+            if self.apply_move(path):
+                if verbose:
+                    print(f"[VERBOSE] {label}: move accepted.")
+                successful_moves.append((word, path))
+                return True
+            if failed_words is not None:
+                failed_words.add(word)
 
-        def dfs(current_path: list[BoardCoord]) -> None:
-            if len(current_path) >= MIN_WORD_LEN:
-                found_paths.append(current_path.copy())
+        return False
 
-            current_coord = current_path[-1]
-            row, col = current_coord
-            for next_row, next_col in get_neighbor_coords(board, row, col):
-                next_coord = (next_row, next_col)
-                if next_coord in current_path:
-                    continue
-                if board[next_row][next_col] == BLOCKED_CELL:
-                    continue
-                if path_would_self_cross(current_path, next_coord):
-                    continue
-                if wall_segments and any(
-                    _segments_intersect(current_coord, next_coord, seg_start, seg_end)
-                    for seg_start, seg_end in wall_segments
-                ):
-                    continue
+    def _run_dictionary_phase(  # noqa: PLR0913
+        self,
+        trie: Trie,
+        successful_moves: list[tuple[str, list[BoardCoord]]],
+        *,
+        verbose: bool,
+        label: str,
+        options: DictionarySolverOptions,
+        cache_failed_words: bool,
+    ) -> None:
+        """Run one dictionary-based solving phase until no more moves are accepted."""
+        failed_words = set[str]() if cache_failed_words else None
 
-                current_path.append(next_coord)
-                dfs(current_path)
-                current_path.pop()
+        while True:
+            board = self.get_board()
+            if not has_open_cells(board):
+                return
+            if verbose:
+                print(f"[VERBOSE] {label}: board:\n{board_to_text(board, ' ')}")
 
-        for row_idx, row in enumerate(board):
-            for col_idx, char in enumerate(row):
-                if char == BLOCKED_CELL:
-                    continue
-                dfs([(row_idx, col_idx)])
+            wall_segments = self._current_wall_segments(
+                successful_moves,
+                use_wall_segments=options.use_wall_segments,
+            )
+            candidate_paths = trie.find_all_word_paths(board, wall_segments, options=options)
+            if not candidate_paths:
+                return
 
-        found_paths.sort(key=lambda path: (-len(path), tuple(path)))
-        return found_paths
+            match_found = self._try_candidate_paths(
+                board,
+                candidate_paths,
+                successful_moves,
+                verbose=verbose,
+                label=label,
+                failed_words=failed_words,
+            )
+            if not match_found:
+                return
+            if failed_words is not None:
+                failed_words.clear()
 
-    def run(self, trie: Trie, *, verbose: bool = False) -> list[tuple[str, list[BoardCoord]]]:  # noqa: C901, PLR0912, PLR0915
-        """Solve the current board by repeatedly trying trie paths.
+    def _run_spangram_phase(
+        self,
+        trie: Trie,
+        successful_moves: list[tuple[str, list[BoardCoord]]],
+        *,
+        verbose: bool,
+        label: str,
+        options: SpangramSolverOptions,
+    ) -> None:
+        """Run the spangram-specific solving phase."""
+        while True:
+            board = self.get_board()
+            if not has_open_cells(board) or board_has_spangram(board):
+                return
+            if verbose:
+                print(f"[VERBOSE] {label}: board:\n{board_to_text(board, ' ')}")
+
+            wall_segments = self._current_wall_segments(
+                successful_moves,
+                use_wall_segments=options.use_wall_segments,
+            )
+            candidate_paths = find_all_spangram_paths(trie, board, wall_segments, options=options)
+            if not candidate_paths:
+                return
+
+            if not self._try_candidate_paths(
+                board,
+                candidate_paths,
+                successful_moves,
+                verbose=verbose,
+                label=label,
+            ):
+                return
+
+    def _run_open_path_phase(
+        self,
+        successful_moves: list[tuple[str, list[BoardCoord]]],
+        *,
+        verbose: bool,
+        label: str,
+        options: OpenPathSolverOptions,
+    ) -> None:
+        """Run one exhaustive open-path phase until no more moves are accepted."""
+        while True:
+            board = self.get_board()
+            if not has_open_cells(board):
+                return
+
+            remaining_open_cells = open_cell_count(board)
+            if remaining_open_cells < MIN_WORD_LEN:
+                return
+            if remaining_open_cells > self._FALLBACK_MAX_OPEN_CELLS:
+                if verbose:
+                    print(
+                        f"[VERBOSE] {label}: skipping exhaustive search; "
+                        f"open_cells={remaining_open_cells} exceeds max {self._FALLBACK_MAX_OPEN_CELLS}.",
+                    )
+                return
+
+            if verbose:
+                print(f"[VERBOSE] {label}: board:\n{board_to_text(board, ' ')}")
+            wall_segments = self._current_wall_segments(
+                successful_moves,
+                use_wall_segments=options.use_wall_segments,
+            )
+            candidate_paths = find_all_open_paths(board, wall_segments, options=options)
+            if not candidate_paths:
+                return
+
+            if not self._try_candidate_paths(
+                board,
+                candidate_paths,
+                successful_moves,
+                verbose=verbose,
+                label=label,
+            ):
+                return
+
+    def solve_with_default_dictionary(
+        self,
+        trie: Trie,
+        successful_moves: list[tuple[str, list[BoardCoord]]],
+        *,
+        verbose: bool,
+    ) -> None:
+        """Try standard dictionary solving with all optimizations enabled."""
+        # Phase 1: use the normal word dictionary with all path protections enabled.
+        self._run_dictionary_phase(
+            trie,
+            successful_moves,
+            verbose=verbose,
+            label="default-solver",
+            options=DictionarySolverOptions(),
+            cache_failed_words=True,
+        )
+
+    def solve_with_spangram(
+        self,
+        trie: Trie,
+        successful_moves: list[tuple[str, list[BoardCoord]]],
+        *,
+        verbose: bool,
+    ) -> None:
+        """Try finding a missing spangram using segmented dictionary strings."""
+        # Phase 2: search only for board-spanning paths that can be segmented
+        # into dictionary words, including short words excluded from normal play.
+        self._run_spangram_phase(
+            trie,
+            successful_moves,
+            verbose=verbose,
+            label="spangram-solver",
+            options=SpangramSolverOptions(),
+        )
+
+    def solve_with_fallback_mode_1(
+        self,
+        trie: Trie,
+        successful_moves: list[tuple[str, list[BoardCoord]]],
+        *,
+        verbose: bool,
+    ) -> None:
+        """Try dictionary solving again with all protections disabled."""
+        # Phase 3: keep dictionary pruning, but allow repeated words, crossings,
+        # ignored wall segments, and small-island outcomes.
+        self._run_dictionary_phase(
+            trie,
+            successful_moves,
+            verbose=verbose,
+            label="fallback-mode-1",
+            options=DictionarySolverOptions(
+                dedupe_words=False,
+                prevent_self_crossing=False,
+                use_wall_segments=False,
+                reject_small_islands=False,
+            ),
+            cache_failed_words=False,
+        )
+
+    def solve_with_fallback_mode_2(
+        self,
+        successful_moves: list[tuple[str, list[BoardCoord]]],
+        *,
+        verbose: bool,
+    ) -> None:
+        """Try exhaustive open-path solving with normal geometric protections."""
+        # Phase 4: enumerate all open-cell paths while still respecting walls
+        # and self-crossing checks.
+        self._run_open_path_phase(
+            successful_moves,
+            verbose=verbose,
+            label="fallback-mode-2",
+            options=OpenPathSolverOptions(),
+        )
+
+    def solve_with_fallback_mode_3(
+        self,
+        successful_moves: list[tuple[str, list[BoardCoord]]],
+        *,
+        verbose: bool,
+    ) -> None:
+        """Try exhaustive open-path solving with relaxed geometry protections."""
+        # Phase 5: exhaustive path search again, but ignore self-crossing and
+        # historical wall segments.
+        self._run_open_path_phase(
+            successful_moves,
+            verbose=verbose,
+            label="fallback-mode-3",
+            options=OpenPathSolverOptions(
+                prevent_self_crossing=False,
+                use_wall_segments=False,
+            ),
+        )
+
+    def run(
+        self,
+        trie: Trie,
+        spangram_trie: Trie | None = None,
+        *,
+        verbose: bool = False,
+    ) -> list[tuple[str, list[BoardCoord]]]:
+        """Solve the current board by running the configured solver phases.
 
         Args:
-            trie: Trie containing allowed words.
+            trie: Trie containing standard allowed words.
+            spangram_trie: Optional trie used for spangram solving.
             verbose: Whether to print verbose logging information.
 
         Returns:
@@ -112,85 +318,17 @@ class Bot(ABC):
 
         """
         successful_moves: list[tuple[str, list[BoardCoord]]] = []
+
+        self.solve_with_default_dictionary(trie, successful_moves, verbose=verbose)
         board = self.get_board()
-        match_found = True
-        failed_words: set[str] = set()
+        if has_open_cells(board) and not board_has_spangram(board):
+            self.solve_with_spangram(spangram_trie or trie, successful_moves, verbose=verbose)
 
-        while match_found:
-            match_found = False
-            if verbose:
-                board_for_printing = board_to_text(board, " ")
-                print(f"[VERBOSE] Finding paths for board:\n{board_for_printing}")
-            wall_segments = self._diagonal_wall_segments(successful_moves)
-            candidate_paths = trie.find_all_word_paths(board, wall_segments or None)
-
-            skipped_any = False
-            for path in candidate_paths:
-                word = coords_to_word(board, path)
-                if word in failed_words:
-                    if verbose:
-                        print(f"[VERBOSE] Skipping cached failed word '{word}'.")
-                    skipped_any = True
-                    continue
-                if verbose:
-                    print(f"[VERBOSE] Trying candidate word '{word}' with path {path}")
-                match_found = self.apply_move(path)
-                if match_found:
-                    if verbose:
-                        print("[VERBOSE] Move accepted.")
-                    successful_moves.append((word, path))
-                    board = self.get_board()
-                    break
-                failed_words.add(word)
-
-            # If no match was found but some candidates were skipped due to the
-            # cache, clear the cache and retry — a previously-failed word may now
-            # be valid on the updated board.
-            if not match_found and skipped_any:
-                if verbose:
-                    print("[VERBOSE] No match found with cache active; clearing failed-word cache and retrying.")
-                failed_words.clear()
-                match_found = True
-                continue
-
-            open_cell_count = self._open_cell_count(board)
-            if not match_found and open_cell_count >= MIN_WORD_LEN and open_cell_count <= self._FALLBACK_MAX_OPEN_CELLS:
-                if verbose:
-                    print("[VERBOSE] No dictionary moves accepted; trying exhaustive open-cell fallback paths.")
-
-                fallback_paths = self._all_open_paths(board, wall_segments or None)
-                for path in fallback_paths:
-                    if verbose:
-                        print(f"[VERBOSE] Trying fallback path {path}")
-                    match_found = self.apply_move(path)
-                    if match_found:
-                        if verbose:
-                            print("[VERBOSE] Fallback path accepted.")
-                        successful_moves.append((coords_to_word(board, path), path))
-                        board = self.get_board()
-                        break
-            elif not match_found and self._has_open_cells(board) and verbose:
-                print(
-                    "[VERBOSE] Skipping exhaustive fallback: "
-                    f"open_cells={open_cell_count} exceeds max {self._FALLBACK_MAX_OPEN_CELLS}.",
-                )
+        if has_open_cells(self.get_board()):
+            self.solve_with_fallback_mode_1(trie, successful_moves, verbose=verbose)
+        if has_open_cells(self.get_board()):
+            self.solve_with_fallback_mode_2(successful_moves, verbose=verbose)
+        if has_open_cells(self.get_board()):
+            self.solve_with_fallback_mode_3(successful_moves, verbose=verbose)
 
         return successful_moves
-
-
-def _orientation(a: BoardCoord, b: BoardCoord, c: BoardCoord) -> int:
-    """Return orientation sign for ordered triplet `(a, b, c)`."""
-    ax, ay = a[1], a[0]
-    bx, by = b[1], b[0]
-    cx, cy = c[1], c[0]
-    return (bx - ax) * (cy - ay) - (by - ay) * (cx - ax)
-
-
-def _segments_intersect(a1: BoardCoord, a2: BoardCoord, b1: BoardCoord, b2: BoardCoord) -> bool:
-    """Return whether two closed line segments intersect."""
-    o1 = _orientation(a1, a2, b1)
-    o2 = _orientation(a1, a2, b2)
-    o3 = _orientation(b1, b2, a1)
-    o4 = _orientation(b1, b2, a2)
-
-    return (o1 > 0 > o2 or o1 < 0 < o2) and (o3 > 0 > o4 or o3 < 0 < o4)

@@ -46,7 +46,9 @@ def main(argv: list[str] | None = None) -> int:
     args = parse_args(argv)
 
     words = load_allowed_words(args.allowed_words)
+    spangram_words = load_allowed_words(args.allowed_words, min_word_len=1)
     trie = Trie.build_from_words(words)
+    spangram_trie = Trie.build_from_words(spangram_words)
 
     driver = DeviceDriverADB(
         adb_path=args.adb_path,
@@ -63,7 +65,7 @@ def main(argv: list[str] | None = None) -> int:
         reader=reader,
     )
     try:
-        successful_moves = bot.run(trie, verbose=args.verbose)
+        successful_moves = bot.run(trie, spangram_trie=spangram_trie, verbose=args.verbose)
     except NotImplementedError as error:
         print(f"device_mode_not_ready: {error}", file=sys.stderr)
         return 2

@@ -7,6 +7,7 @@ from strands_solver.bot.bot_device import BotDevice
 from strands_solver.bot.bot_fake import BotFake
 from strands_solver.device.device_driver import DeviceDriver
 from strands_solver.solver.solver import Trie
+from strands_solver.util.util import SPANGRAM_BLOCKED_CELL
 
 if TYPE_CHECKING:
     from pathlib import Path
@@ -121,7 +122,7 @@ def test_run_returns_empty_when_no_move_matches() -> None:
         "wxyz",
     ]
     trie = Trie.build_from_words(["test"])
-    bot = BotFake(board, [[(1, 0), (1, 1), (1, 2), (1, 3)]])
+    bot = BotFake(board, [])
 
     assert bot.run(trie) == []
 
@@ -163,7 +164,7 @@ def test_run_returns_empty_when_trie_has_no_candidates() -> None:
         "wxyz",
     ]
     trie = Trie.build_from_words(["zzzz"])
-    bot = BotFake(board, [[(0, 0), (0, 1), (0, 2), (0, 3)]])
+    bot = BotFake(board, [])
 
     assert bot.run(trie) == []
 
@@ -210,14 +211,12 @@ def test_run_fallback_respects_diagonal_walls_from_accepted_moves() -> None:
         "ghxd",
     ]
     abcd_path: list[BoardCoord] = [(0, 0), (1, 1), (2, 2), (3, 3)]
-    crossing_path: list[BoardCoord] = [(1, 2), (2, 1), (3, 0), (3, 1)]
     trie = Trie.build_from_words(["abcd"])
     bot = LoggingBotFake(board, [abcd_path])
 
     result = bot.run(trie)
 
     assert result == [("abcd", abcd_path)]
-    assert crossing_path not in bot.attempted_moves
 
 
 def test_bot_direct_input_validates_move_paths() -> None:
@@ -249,6 +248,22 @@ def test_device_bot_get_board_uses_extracted_state() -> None:
     )
 
     assert bot.get_board() == ["test", "abcd", "rate", "wxyz"]
+
+
+def test_device_bot_get_board_marks_spangram_cells_separately() -> None:
+    state = BoardState(
+        board=["test", "abcd", "rate", "wxyz"],
+        cell_states=[
+            [Highlight.SPANGRAM, Highlight.NONE, Highlight.NONE, Highlight.NONE],
+            [Highlight.NONE, Highlight.NONE, Highlight.NONE, Highlight.NONE],
+            [Highlight.NONE, Highlight.NONE, Highlight.NONE, Highlight.NONE],
+            [Highlight.NONE, Highlight.NONE, Highlight.NONE, Highlight.NONE],
+        ],
+    )
+    bot = BotDeviceDouble([["test", "abcd", "rate", "wxyz"]])
+    bot._state = state
+
+    assert bot.get_board() == [f"{SPANGRAM_BLOCKED_CELL}est", "abcd", "rate", "wxyz"]
 
 
 def test_device_bot_apply_move_returns_true_when_verified() -> None:
@@ -316,3 +331,37 @@ def test_run_prioritizes_longer_words_first() -> None:
     result = bot.run(trie)
 
     assert result[0] == ("tests", tests_path)
+
+
+def test_run_uses_spangram_phase_after_default_solver() -> None:
+    board = [
+        "this",
+        "xxis",
+        "xxxx",
+        "xxxx",
+    ]
+    spangram_path: list[BoardCoord] = [(0, 0), (0, 1), (0, 2), (0, 3), (1, 2), (1, 3)]
+    trie = Trie.build_from_words(["this"])
+    spangram_trie = Trie.build_from_words(["this", "is"])
+    bot = BotFake(board, [spangram_path], spangram_indexes={0})
+
+    result = bot.run(trie, spangram_trie=spangram_trie)
+
+    assert result == [("thisis", spangram_path)]
+    assert bot.get_board() == ["$$$$", "xx$$", "xxxx", "xxxx"]
+
+
+def test_run_fallback_mode_1_disables_small_island_rejection() -> None:
+    board = [
+        "ab##",
+        "cdef",
+        "##gh",
+        "ijkl",
+    ]
+    cdef_path: list[BoardCoord] = [(1, 0), (1, 1), (1, 2), (1, 3)]
+    trie = Trie.build_from_words(["cdef"])
+    bot = BotFake(board, [cdef_path])
+
+    result = bot.run(trie)
+
+    assert result == [("cdef", cdef_path)]

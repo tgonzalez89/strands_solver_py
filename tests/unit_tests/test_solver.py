@@ -1,4 +1,11 @@
-from strands_solver.solver.solver import Trie, get_neighbor_coords, leaves_small_island
+from strands_solver.solver.solver import (
+    DictionarySolverOptions,
+    SpangramSolverOptions,
+    Trie,
+    get_neighbor_coords,
+    leaves_small_island,
+)
+from strands_solver.solver.spangram_solver import find_all_spangram_paths
 
 
 def test_get_neighbor_coords_center_has_8_neighbors() -> None:
@@ -259,3 +266,71 @@ def test_trie_finds_word_on_late_game_board_without_overblocking() -> None:
         [(1, 5), (1, 4), (2, 3), (1, 3)],
         [(2, 2), (3, 2), (4, 3), (5, 4)],
     ]
+
+
+def test_trie_can_allow_self_crossing_when_option_disabled() -> None:
+    board = [
+        "abcd",
+        "efgh",
+        "ijkl",
+        "mnop",
+    ]
+    trie = Trie.build_from_words(["afeb"])
+
+    paths = trie.find_all_word_paths(
+        board,
+        options=DictionarySolverOptions(prevent_self_crossing=False),
+    )
+
+    assert [(0, 0), (1, 1), (1, 0), (0, 1)] in paths
+
+
+def test_trie_can_allow_small_islands_when_option_disabled() -> None:
+    board = [
+        "ab##",
+        "cdef",
+        "##gh",
+        "ijkl",
+    ]
+    trie = Trie.build_from_words(["cdef"])
+
+    paths = trie.find_all_word_paths(
+        board,
+        options=DictionarySolverOptions(reject_small_islands=False),
+    )
+
+    assert paths == [[(1, 0), (1, 1), (1, 2), (1, 3)]]
+
+
+def test_trie_can_keep_duplicate_word_paths_when_dedupe_disabled() -> None:
+    board = [
+        "test",
+        "test",
+        "abcd",
+        "efgh",
+    ]
+    trie = Trie.build_from_words(["test"])
+
+    paths = trie.find_all_word_paths(
+        board,
+        options=DictionarySolverOptions(dedupe_words=False),
+    )
+
+    assert paths == [
+        [(0, 0), (0, 1), (0, 2), (0, 3)],
+        [(1, 0), (1, 1), (1, 2), (1, 3)],
+    ]
+
+
+def test_spangram_solver_accepts_segmented_word_strings() -> None:
+    board = [
+        "this",
+        "xxis",
+        "xxxx",
+        "xxxx",
+    ]
+    trie = Trie.build_from_words(["this", "is"])
+
+    paths = find_all_spangram_paths(board=board, trie=trie, options=SpangramSolverOptions())
+
+    assert paths[0] == [(0, 0), (0, 1), (0, 2), (0, 3), (1, 2), (1, 3)]

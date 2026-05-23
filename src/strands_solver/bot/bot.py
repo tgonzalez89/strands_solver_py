@@ -64,15 +64,30 @@ class Bot(ABC):
         *,
         verbose: bool,
         label: str,
-        failed_words: set[str] | None = None,
+        failed_paths: set[tuple[BoardCoord, ...]],
     ) -> bool:
-        """Try candidate paths until one is accepted."""
+        """Try candidate paths until one is accepted.
+
+        Args:
+            board: Current board state.
+            candidate_paths: Paths to try in order.
+            successful_moves: List to append accepted moves to.
+            verbose: Whether to print logging.
+            label: Label for verbose output.
+            failed_paths: Set of paths that have failed; updated with new failures.
+
+        Returns:
+            True if a move was accepted, False if all candidates failed or were cached.
+
+        """
         for path in candidate_paths:
-            word = coords_to_word(board, path)
-            if failed_words is not None and word in failed_words:
+            path_tuple = tuple(path)
+            if path_tuple in failed_paths:
+                word = coords_to_word(board, path)
                 if verbose:
-                    print(f"[VERBOSE] {label}: skipping cached failed word '{word}'.")
+                    print(f"[VERBOSE] {label}: skipping cached failed path for '{word}'.")
                 continue
+            word = coords_to_word(board, path)
             if verbose:
                 print(f"[VERBOSE] {label}: trying '{word}' with path {path}")
             if self.apply_move(path):
@@ -80,8 +95,7 @@ class Bot(ABC):
                     print(f"[VERBOSE] {label}: move accepted.")
                 successful_moves.append((word, path))
                 return True
-            if failed_words is not None:
-                failed_words.add(word)
+            failed_paths.add(path_tuple)
 
         return False
 
@@ -89,15 +103,13 @@ class Bot(ABC):
         self,
         trie: Trie,
         successful_moves: list[tuple[str, list[BoardCoord]]],
+        failed_paths: set[tuple[BoardCoord, ...]],
         *,
         verbose: bool,
         label: str,
         options: DictionarySolverOptions,
-        cache_failed_words: bool,
     ) -> None:
         """Run one dictionary-based solving phase until no more moves are accepted."""
-        failed_words = set[str]() if cache_failed_words else None
-
         while True:
             board = self.get_board()
             if not has_open_cells(board):
@@ -119,17 +131,17 @@ class Bot(ABC):
                 successful_moves,
                 verbose=verbose,
                 label=label,
-                failed_words=failed_words,
+                failed_paths=failed_paths,
             )
-            if not match_found:
-                return
-            if failed_words is not None:
-                failed_words.clear()
+            if match_found:
+                continue
+            return
 
-    def _run_spangram_phase(
+    def _run_spangram_phase(  # noqa: PLR0913
         self,
         trie: Trie,
         successful_moves: list[tuple[str, list[BoardCoord]]],
+        failed_paths: set[tuple[BoardCoord, ...]],
         *,
         verbose: bool,
         label: str,
@@ -151,18 +163,21 @@ class Bot(ABC):
             if not candidate_paths:
                 return
 
-            if not self._try_candidate_paths(
+            matched = self._try_candidate_paths(
                 board,
                 candidate_paths,
                 successful_moves,
                 verbose=verbose,
                 label=label,
-            ):
+                failed_paths=failed_paths,
+            )
+            if not matched:
                 return
 
     def _run_open_path_phase(
         self,
         successful_moves: list[tuple[str, list[BoardCoord]]],
+        failed_paths: set[tuple[BoardCoord, ...]],
         *,
         verbose: bool,
         label: str,
@@ -195,19 +210,22 @@ class Bot(ABC):
             if not candidate_paths:
                 return
 
-            if not self._try_candidate_paths(
+            matched = self._try_candidate_paths(
                 board,
                 candidate_paths,
                 successful_moves,
                 verbose=verbose,
                 label=label,
-            ):
+                failed_paths=failed_paths,
+            )
+            if not matched:
                 return
 
     def solve_with_default_dictionary(
         self,
         trie: Trie,
         successful_moves: list[tuple[str, list[BoardCoord]]],
+        failed_paths: set[tuple[BoardCoord, ...]],
         *,
         verbose: bool,
     ) -> None:
@@ -216,16 +234,17 @@ class Bot(ABC):
         self._run_dictionary_phase(
             trie,
             successful_moves,
+            failed_paths,
             verbose=verbose,
             label="default-solver",
             options=DictionarySolverOptions(),
-            cache_failed_words=True,
         )
 
     def solve_with_spangram(
         self,
         trie: Trie,
         successful_moves: list[tuple[str, list[BoardCoord]]],
+        failed_paths: set[tuple[BoardCoord, ...]],
         *,
         verbose: bool,
     ) -> None:
@@ -235,6 +254,7 @@ class Bot(ABC):
         self._run_spangram_phase(
             trie,
             successful_moves,
+            failed_paths,
             verbose=verbose,
             label="spangram-solver",
             options=SpangramSolverOptions(),
@@ -244,6 +264,7 @@ class Bot(ABC):
         self,
         trie: Trie,
         successful_moves: list[tuple[str, list[BoardCoord]]],
+        failed_paths: set[tuple[BoardCoord, ...]],
         *,
         verbose: bool,
     ) -> None:
@@ -253,6 +274,7 @@ class Bot(ABC):
         self._run_dictionary_phase(
             trie,
             successful_moves,
+            failed_paths,
             verbose=verbose,
             label="fallback-mode-1",
             options=DictionarySolverOptions(
@@ -261,12 +283,12 @@ class Bot(ABC):
                 use_wall_segments=False,
                 reject_small_islands=False,
             ),
-            cache_failed_words=False,
         )
 
     def solve_with_fallback_mode_2(
         self,
         successful_moves: list[tuple[str, list[BoardCoord]]],
+        failed_paths: set[tuple[BoardCoord, ...]],
         *,
         verbose: bool,
     ) -> None:
@@ -275,6 +297,7 @@ class Bot(ABC):
         # and self-crossing checks.
         self._run_open_path_phase(
             successful_moves,
+            failed_paths,
             verbose=verbose,
             label="fallback-mode-2",
             options=OpenPathSolverOptions(),
@@ -283,6 +306,7 @@ class Bot(ABC):
     def solve_with_fallback_mode_3(
         self,
         successful_moves: list[tuple[str, list[BoardCoord]]],
+        failed_paths: set[tuple[BoardCoord, ...]],
         *,
         verbose: bool,
     ) -> None:
@@ -291,6 +315,7 @@ class Bot(ABC):
         # historical wall segments.
         self._run_open_path_phase(
             successful_moves,
+            failed_paths,
             verbose=verbose,
             label="fallback-mode-3",
             options=OpenPathSolverOptions(
@@ -318,17 +343,21 @@ class Bot(ABC):
 
         """
         successful_moves: list[tuple[str, list[BoardCoord]]] = []
+        failed_paths: set[tuple[BoardCoord, ...]] = set()
 
-        self.solve_with_default_dictionary(trie, successful_moves, verbose=verbose)
+        self.solve_with_default_dictionary(trie, successful_moves, failed_paths, verbose=verbose)
+
         board = self.get_board()
         if has_open_cells(board) and not board_has_spangram(board):
-            self.solve_with_spangram(spangram_trie or trie, successful_moves, verbose=verbose)
+            self.solve_with_spangram(spangram_trie or trie, successful_moves, failed_paths, verbose=verbose)
 
         if has_open_cells(self.get_board()):
-            self.solve_with_fallback_mode_1(trie, successful_moves, verbose=verbose)
+            self.solve_with_fallback_mode_1(trie, successful_moves, failed_paths, verbose=verbose)
+
         if has_open_cells(self.get_board()):
-            self.solve_with_fallback_mode_2(successful_moves, verbose=verbose)
+            self.solve_with_fallback_mode_2(successful_moves, failed_paths, verbose=verbose)
+
         if has_open_cells(self.get_board()):
-            self.solve_with_fallback_mode_3(successful_moves, verbose=verbose)
+            self.solve_with_fallback_mode_3(successful_moves, failed_paths, verbose=verbose)
 
         return successful_moves

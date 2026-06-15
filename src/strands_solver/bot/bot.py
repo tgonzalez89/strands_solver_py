@@ -137,6 +137,47 @@ class Bot(ABC):
                 continue
             return
 
+    def _run_dictionary_phase2(  # noqa: PLR0913
+        self,
+        trie: Trie,
+        successful_moves: list[tuple[str, list[BoardCoord]]],
+        failed_paths: set[tuple[BoardCoord, ...]],
+        *,
+        verbose: bool,
+        label: str,
+        options: DictionarySolverOptions,
+    ) -> None:
+        """Run one dictionary-based solving phase until no more moves are accepted."""
+        while True:
+            board = self.get_board()
+            if not has_open_cells(board):
+                return
+            if verbose:
+                print(f"[VERBOSE] {label}: board:\n{board_to_text(board, ' ')}")
+
+            wall_segments = self._current_wall_segments(
+                successful_moves,
+                use_wall_segments=options.use_wall_segments,
+            )
+            candidate_paths_limited = trie.find_all_word_paths(board, wall_segments, options=DictionarySolverOptions())
+            candidate_paths_all = trie.find_all_word_paths(board, wall_segments, options=options)
+            # Only consider candidates that are new under the relaxed options, to avoid retrying the same paths in multiple fallback phases.
+            candidate_paths = [path for path in candidate_paths_all if path not in candidate_paths_limited]
+            if not candidate_paths:
+                return
+
+            match_found = self._try_candidate_paths(
+                board,
+                candidate_paths,
+                successful_moves,
+                verbose=verbose,
+                label=label,
+                failed_paths=failed_paths,
+            )
+            if match_found:
+                continue
+            return
+
     def _run_spangram_phase(  # noqa: PLR0913
         self,
         trie: Trie,
@@ -237,7 +278,7 @@ class Bot(ABC):
             failed_paths,
             verbose=verbose,
             label="default-solver",
-            options=DictionarySolverOptions(),
+            options=DictionarySolverOptions(dedupe_words=False, prevent_self_crossing=False),
         )
 
     def solve_with_spangram(
@@ -271,7 +312,7 @@ class Bot(ABC):
         """Try dictionary solving again with all protections disabled."""
         # Phase 3: keep dictionary pruning, but allow repeated words, crossings,
         # ignored wall segments, and small-island outcomes.
-        self._run_dictionary_phase(
+        self._run_dictionary_phase2(
             trie,
             successful_moves,
             failed_paths,

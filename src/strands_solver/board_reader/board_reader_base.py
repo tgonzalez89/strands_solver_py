@@ -156,10 +156,10 @@ class BoardReaderBase(BoardReader):
         move_before_states = [before_states[row_idx][col_idx] for row_idx, col_idx in move]
         move_after_states = [after_states[row_idx][col_idx] for row_idx, col_idx in move]
 
-        was_unselected = all(state == Highlight.NONE for state in move_before_states)
-        # If any cell in the move was already selected before,
+        was_free = all(state in (Highlight.NONE, Highlight.SELECTED) for state in move_before_states)
+        # If any cell in the move was already in use before,
         # the feedback is unreliable and should be classified as NONE.
-        if not was_unselected:
+        if not was_free:
             return Highlight.NONE
 
         has_spangram = any(state == Highlight.SPANGRAM for state in move_after_states)

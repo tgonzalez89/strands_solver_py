@@ -1,11 +1,14 @@
 """Appium-backed device driver implementation."""
 
+from __future__ import annotations
+
 from itertools import pairwise
 from typing import TYPE_CHECKING, Protocol
 
 from strands_solver.device.device_driver import DeviceDriver
 
 if TYPE_CHECKING:
+    from strands_solver.board_reader.board_reader import BoardReader
     from strands_solver.util.util import PixelCoord
 
 
@@ -88,11 +91,12 @@ class DeviceDriverAppium(DeviceDriver):
         msg = "Appium returned an empty screenshot"
         raise NotImplementedError(msg)
 
-    def execute_path(self, pixel_path: list[PixelCoord]) -> None:
+    def execute_path(self, pixel_path: list[PixelCoord], board_reader: BoardReader | None = None) -> None:
         """Execute a board path as one or more Appium swipes.
 
         Args:
             pixel_path: Ordered pixel coordinates to swipe through.
+            board_reader: Optional board reader passed for API compatibility.
 
         Raises:
             ValueError: If `pixel_path` is empty.

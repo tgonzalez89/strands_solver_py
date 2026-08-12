@@ -7,6 +7,7 @@ from typing import TYPE_CHECKING
 from strands_solver.device.device_driver import DeviceDriver
 
 if TYPE_CHECKING:
+    from strands_solver.board_reader.board_reader import BoardReader, BoardState
     from strands_solver.util.util import PixelCoord
 
 
@@ -20,7 +21,7 @@ class DeviceDriverADB(DeviceDriver):
         adb_server_host: str | None = None,
         adb_server_port: int | None = None,
         device_serial: str | None = None,
-        tap_delay_ms: int = 10,
+        tap_delay_ms: int = 0,
         swipe_duration_ms: int | None = None,
         command_timeout_s: float = 10.0,
     ) -> None:
@@ -107,7 +108,11 @@ class DeviceDriverADB(DeviceDriver):
         x, y = coord
         self._run_adb_command(["shell", "input", "tap", str(x), str(y)])
 
-    def execute_path(self, pixel_path: list[PixelCoord]) -> None:
+    def execute_path(
+        self,
+        pixel_path: list[PixelCoord],
+        board_reader: BoardReader | None = None,
+    ) -> None:
         """Execute a board path as a sequence of taps followed by a confirmation tap.
 
         Each coordinate in the path is tapped once to select it. After all cells
@@ -117,10 +122,13 @@ class DeviceDriverADB(DeviceDriver):
 
         Args:
             pixel_path: Ordered pixel coordinates to swipe through.
+            board_reader: Optional board reader used to verify that individual
+                tap gestures changed the expected cell state.
 
         Raises:
             ValueError: If `pixel_path` is empty.
             NotImplementedError: If adb command execution fails.
+            RuntimeError: If a cell state change is not detected after tapping.
 
         """
         if not pixel_path:
@@ -129,9 +137,71 @@ class DeviceDriverADB(DeviceDriver):
 
         delay_s = self._tap_delay_ms / 1000.0
 
+        if board_reader is None:
+            for coord in pixel_path:
+                self.tap(coord)
+                time.sleep(delay_s)
+            # Confirm by tapping the last cell a second time.
+            self.tap(pixel_path[-1])
+            return
+
+        before_state = board_reader.extract_state(self.capture_screen())
         for coord in pixel_path:
             self.tap(coord)
+            self._wait_until_cell_state_changes(coord, board_reader, before_state)
+            before_state = board_reader.extract_state(self.capture_screen())
             time.sleep(delay_s)
 
         # Confirm by tapping the last cell a second time.
         self.tap(pixel_path[-1])
+
+    def _wait_until_cell_state_changes(  # noqa: C901
+        self,
+        pixel_coord: PixelCoord,
+        board_reader: BoardReader,
+        before_state: BoardState,
+        timeout_s: float = 10.0,
+        poll_interval_s: float = 0.1,
+    ) -> None:
+        """Wait until the tapped cell's state differs from the previous board state."""
+        if before_state.cell_states is None:
+            msg = "Board reader did not provide cell state metadata for tap verification"
+            raise RuntimeError(msg)
+
+        cell_centers = getattr(board_reader, "_cell_centers", [])
+        if not cell_centers:
+            msg = "Board reader geometry is not available for tap verification"
+            raise RuntimeError(msg)
+
+        row_idx = -1
+        col_idx = -1
+        best_distance = float("inf")
+        for row, row_centers in enumerate(cell_centers):
+            for col, center in enumerate(row_centers):
+                distance = abs(center[0] - pixel_coord[0]) + abs(center[1] - pixel_coord[1])
+                if distance < best_distance:
+                    best_distance = distance
+                    row_idx = row
+                    col_idx = col
+
+        if row_idx < 0 or col_idx < 0:
+            msg = "Could not map tap coordinate to board cell for verification"
+            raise RuntimeError(msg)
+
+        deadline = time.monotonic() + timeout_s
+        previous_state = before_state.cell_states[row_idx][col_idx]
+
+        while time.monotonic() < deadline:
+            after_state = board_reader.extract_state(self.capture_screen())
+            if after_state.cell_states is None:
+                msg = "Board reader did not provide cell state metadata for tap verification"
+                raise RuntimeError(msg)
+            if row_idx >= len(after_state.cell_states) or col_idx >= len(after_state.cell_states[row_idx]):
+                msg = "Board reader returned inconsistent cell state dimensions during tap verification"
+                raise RuntimeError(msg)
+            if after_state.cell_states[row_idx][col_idx] != previous_state:
+                return
+            time.sleep(poll_interval_s)
+
+        msg = f"Timed out waiting for tapped cell at {pixel_coord} to change state"
+        raise RuntimeError(msg)

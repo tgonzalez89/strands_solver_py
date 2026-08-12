@@ -15,6 +15,7 @@ class Highlight(StrEnum):
     NONE = "none"
     WORD = "word"
     SPANGRAM = "spangram"
+    SELECTED = "selected"  # Used internally to track selected cells during move execution
 
 
 type CellStateGrid = list[list[Highlight]]

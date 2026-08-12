@@ -64,7 +64,7 @@ class BotDevice(Bot):
         board_chars = [list(row.lower()) for row in state.board]
         for row_idx, row_states in enumerate(state.cell_states):
             for col_idx, highlight in enumerate(row_states):
-                if highlight == Highlight.NONE:
+                if highlight in (Highlight.NONE, Highlight.SELECTED):
                     continue
                 if row_idx >= len(board_chars) or col_idx >= len(board_chars[row_idx]):
                     continue
@@ -87,7 +87,16 @@ class BotDevice(Bot):
         before_state = self._state if self._state is not None else self.refresh_state()
         pixel_path = self._reader.board_move_to_pixel_path(move)
         self._driver.execute_path(pixel_path)
-        after_state = self.refresh_state()
+        # Wait until the board state stabilizes,
+        # since animations can cause a wrong feedback classification if the board is still changing.
+        # Wait until two consecutive board states are identical.
+        after_state1 = self.refresh_state()
+        after_state2 = self.refresh_state()
+        while after_state1.cell_states != after_state2.cell_states:
+            after_state1 = after_state2
+            after_state2 = self.refresh_state()
+        after_state = after_state2
+        # after_state = self.refresh_state()
         feedback = self._reader.classify_feedback(before_state, after_state, move)
         # Set all cell states of the move to the result of the feedback.
         # This ensures that subsequent calls to get_board() will reflect the expected blocked cells.

@@ -20,13 +20,7 @@ def parse_args(argv: list[str] | None = None) -> argparse.Namespace:
     parser.add_argument("--adb-host", default="", help="ADB server host (passed as `adb -H`).")
     parser.add_argument("--adb-port", type=int, default=0, help="ADB server port (passed as `adb -P`).")
     parser.add_argument("--device-serial", default="", help="ADB device serial (from `adb devices`).")
-    parser.add_argument(
-        "--tap-delay-ms",
-        dest="tap_delay_ms",
-        type=int,
-        default=10,
-        help="Delay in ms between taps.",
-    )
+    parser.add_argument("--tap-delay-ms", type=int, default=0, help="Delay in ms between taps.")
     parser.add_argument("--adb-timeout-s", type=float, default=10.0, help="Timeout in seconds per adb command.")
     parser.add_argument(
         "--tessdata-dir",

@@ -1,9 +1,11 @@
 """Fake device driver that generates synthetic Strands screenshots."""
 
+from __future__ import annotations
+
 from dataclasses import replace
 from pathlib import Path
 
-from strands_solver.board_reader.board_reader import Highlight
+from strands_solver.board_reader.board_reader import BoardReader, Highlight
 from strands_solver.device.device_driver import DeviceDriver
 from strands_solver.image_renderer.board_image_renderer import LIGHT_THEME, RenderConfig, render_board_png
 from strands_solver.util.util import (
@@ -121,11 +123,12 @@ class DeviceDriverFake(DeviceDriver):
         self._coord_by_pixel = {pixel: coord for coord, pixel in cell_centers.items()}
         return png_bytes
 
-    def execute_path(self, pixel_path: list[PixelCoord]) -> None:
+    def execute_path(self, pixel_path: list[PixelCoord], board_reader: BoardReader | None = None) -> None:
         """Apply a move encoded as pixel centers if configured as valid.
 
         Args:
             pixel_path: Path of pixel centers corresponding to cell centers.
+            board_reader: Optional board reader passed for API compatibility.
 
         Raises:
             ValueError: If the path is empty or contains unknown pixels.

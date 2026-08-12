@@ -42,7 +42,7 @@ PALETTE: Final[dict[tuple[int, int, int], Highlight]] = {
     NONE_COLOR_DARK: Highlight.NONE,
     WORD_COLOR: Highlight.WORD,
     SPANGRAM_COLOR: Highlight.SPANGRAM,
-    SELECTION_COLOR: Highlight.NONE,
+    SELECTION_COLOR: Highlight.SELECTED,
 }
 
 # Default Tesseract data directory, depending on the OS.

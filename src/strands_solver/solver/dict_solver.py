@@ -101,7 +101,7 @@ class Trie:
     ) -> list[list[BoardCoord]]:
         """Rank candidate paths using deterministic heuristics."""
         if dedupe_words:
-            best_path_by_word: dict[str, list[BoardCoord]] = {}
+            """best_path_by_word: dict[str, list[BoardCoord]] = {}
 
             for path in candidate_paths:
                 word = coords_to_word(board, path)
@@ -109,10 +109,24 @@ class Trie:
                 if existing_path is None or tuple(path) < tuple(existing_path):
                     best_path_by_word[word] = path
 
-            ranked_candidates = list(best_path_by_word.items())
-        else:
-            ranked_candidates = [(coords_to_word(board, path), path) for path in candidate_paths]
+            ranked_candidates = list(best_path_by_word.items())"""
+            # New experimental approach: keep all paths, but put duplicates at the end of the list, sorted by path.
+            unique_paths: list[tuple[str, list[BoardCoord]]] = []
+            duplicate_paths: list[tuple[str, list[BoardCoord]]] = []
+            seen_words: set[str] = set()
+            for path in candidate_paths:
+                word = coords_to_word(board, path)
+                if word in seen_words:
+                    duplicate_paths.append((word, path))
+                else:
+                    unique_paths.append((word, path))
+                    seen_words.add(word)
+            unique_paths.sort(key=lambda item: (-len(item[0]), -len(set(item[0])), item[0], tuple(item[1])))
+            duplicate_paths.sort(key=lambda item: (-len(item[0]), -len(set(item[0])), item[0], tuple(item[1])))
+            ranked_candidates = unique_paths + duplicate_paths
+            return [path for _, path in ranked_candidates]
 
+        ranked_candidates = [(coords_to_word(board, path), path) for path in candidate_paths]
         ranked_candidates.sort(
             key=lambda item: (-len(item[0]), -len(set(item[0])), item[0], tuple(item[1])),
         )

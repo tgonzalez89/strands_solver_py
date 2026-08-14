@@ -21,6 +21,7 @@ def parse_args(argv: list[str] | None = None) -> argparse.Namespace:
     parser.add_argument("--adb-port", type=int, default=0, help="ADB server port (passed as `adb -P`).")
     parser.add_argument("--device-serial", default="", help="ADB device serial (from `adb devices`).")
     parser.add_argument("--tap-delay-ms", type=int, default=0, help="Delay in ms between taps.")
+    parser.add_argument("--apply-move-delay-ms", type=int, default=0, help="Delay in ms after a move action.")
     parser.add_argument("--adb-timeout-s", type=float, default=10.0, help="Timeout in seconds per adb command.")
     parser.add_argument(
         "--tessdata-dir",
@@ -54,10 +55,7 @@ def main(argv: list[str] | None = None) -> int:
     )
     reader = BoardReaderTesseractOpenCV(tessdata_dir=args.tessdata_dir or None)
     reader.calibrate(driver)
-    bot = BotDevice(
-        driver=driver,
-        reader=reader,
-    )
+    bot = BotDevice(driver=driver, reader=reader, apply_move_delay_ms=args.apply_move_delay_ms)
     try:
         successful_moves = bot.run(trie, spangram_trie=spangram_trie, verbose=args.verbose)
     except NotImplementedError as error:

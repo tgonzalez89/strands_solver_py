@@ -135,12 +135,10 @@ class DeviceDriverADB(DeviceDriver):
             msg = "pixel_path must contain at least one coordinate"
             raise ValueError(msg)
 
-        delay_s = self._tap_delay_ms / 1000.0
-
         if board_reader is None:
             for coord in pixel_path:
                 self.tap(coord)
-                time.sleep(delay_s)
+                time.sleep(self._tap_delay_ms / 1000.0)
             # Confirm by tapping the last cell a second time.
             self.tap(pixel_path[-1])
             return
@@ -150,7 +148,6 @@ class DeviceDriverADB(DeviceDriver):
             self.tap(coord)
             self._wait_until_cell_state_changes(coord, board_reader, before_state)
             before_state = board_reader.extract_state(self.capture_screen())
-            time.sleep(delay_s)
 
         # Confirm by tapping the last cell a second time.
         self.tap(pixel_path[-1])

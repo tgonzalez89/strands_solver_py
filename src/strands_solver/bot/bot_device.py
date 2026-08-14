@@ -1,5 +1,6 @@
 """Device-backed bot implementation."""
 
+import time
 from typing import TYPE_CHECKING
 
 from strands_solver.board_reader.board_reader import BoardReader, BoardState, Highlight
@@ -14,17 +15,19 @@ if TYPE_CHECKING:
 class BotDevice(Bot):
     """Concrete bot for real-device or emulator integrations."""
 
-    def __init__(self, driver: DeviceDriver, reader: BoardReader) -> None:
+    def __init__(self, driver: DeviceDriver, reader: BoardReader, apply_move_delay_ms: int = 0) -> None:
         """Initialize the device bot with a driver and board reader.
 
         Args:
             driver: Device interaction implementation.
             reader: Screenshot parser and feedback classifier.
+            apply_move_delay_ms: Delay in milliseconds to apply between move actions.
 
         """
         self._driver = driver
         self._reader = reader
         self._state: BoardState | None = None
+        self._apply_move_delay_ms = apply_move_delay_ms
 
     def refresh_state(self) -> BoardState:
         """Capture and parse the latest board state.
@@ -87,6 +90,11 @@ class BotDevice(Bot):
         before_state = self._state if self._state is not None else self.refresh_state()
         pixel_path = self._reader.board_move_to_pixel_path(move)
         self._driver.execute_path(pixel_path)
+        time.sleep(self._apply_move_delay_ms / 1000.0)
+        after_state = self.refresh_state()
+        """
+        # After each tap, wait until the cell state changes to ensure the app has registered the tap.
+        self._driver.execute_path(pixel_path, self._reader)
         # Wait until the board state stabilizes,
         # since animations can cause a wrong feedback classification if the board is still changing.
         # Wait until two consecutive board states are identical.
@@ -96,7 +104,7 @@ class BotDevice(Bot):
             after_state1 = after_state2
             after_state2 = self.refresh_state()
         after_state = after_state2
-        # after_state = self.refresh_state()
+        """
         feedback = self._reader.classify_feedback(before_state, after_state, move)
         # Set all cell states of the move to the result of the feedback.
         # This ensures that subsequent calls to get_board() will reflect the expected blocked cells.

@@ -278,7 +278,7 @@ class Bot(ABC):
             failed_paths,
             verbose=verbose,
             label="default-solver",
-            options=DictionarySolverOptions(dedupe_words=False, prevent_self_crossing=False),
+            options=DictionarySolverOptions(dedupe_words=True, prevent_self_crossing=False),
         )
 
     def solve_with_spangram(
